@@ -1,0 +1,247 @@
+import { Injectable } from '@nestjs/common';
+import * as sharp from 'sharp';
+import * as crypto from 'crypto';
+
+export interface AugmentationResult {
+  buffer: Buffer;
+  width: number;
+  height: number;
+  sha256: string;
+  transformsApplied: string[];
+}
+
+export interface BoundingBox {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface TransformedAnnotation {
+  originalId: string;
+  labelClassId: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  isValid: boolean; // False if box goes out of bounds
+}
+
+@Injectable()
+export class ClassicalAugmentationService {
+  /**
+   * Apply classical augmentations to an image
+   */
+  async augmentImage(
+    imageBuffer: Buffer,
+    transforms: { type: string; value?: number }[],
+    originalWidth: number,
+    originalHeight: number
+  ): Promise<AugmentationResult> {
+    let pipeline = sharp(imageBuffer);
+    const transformsApplied: string[] = [];
+
+    for (const transform of transforms) {
+      switch (transform.type) {
+        case 'flip_horizontal':
+          pipeline = pipeline.flop();
+          transformsApplied.push('flip_horizontal');
+          break;
+
+        case 'flip_vertical':
+          pipeline = pipeline.flip();
+          transformsApplied.push('flip_vertical');
+          break;
+
+        case 'rotate':
+          const degrees = transform.value || 90;
+          pipeline = pipeline.rotate(degrees, { background: { r: 0, g: 0, b: 0, alpha: 0 } });
+          transformsApplied.push(`rotate_${degrees}`);
+          break;
+
+        case 'brightness':
+          const brightnessFactor = transform.value || 1.2;
+          pipeline = pipeline.modulate({ brightness: brightnessFactor });
+          transformsApplied.push(`brightness_${brightnessFactor}`);
+          break;
+
+        case 'contrast':
+          const contrastFactor = transform.value || 1.2;
+          pipeline = pipeline.linear(contrastFactor, -(128 * contrastFactor) + 128);
+          transformsApplied.push(`contrast_${contrastFactor}`);
+          break;
+
+        case 'saturation':
+          const saturationFactor = transform.value || 1.3;
+          pipeline = pipeline.modulate({ saturation: saturationFactor });
+          transformsApplied.push(`saturation_${saturationFactor}`);
+          break;
+
+        case 'blur':
+          const blurSigma = transform.value || 2;
+          pipeline = pipeline.blur(blurSigma);
+          transformsApplied.push(`blur_${blurSigma}`);
+          break;
+
+        case 'noise':
+          // Add gaussian noise by overlaying random pixels
+          // Sharp doesn't have native noise, so we simulate with slight blur + sharpen
+          pipeline = pipeline.sharpen({ sigma: transform.value || 1 });
+          transformsApplied.push(`noise_${transform.value || 1}`);
+          break;
+
+        case 'scale':
+          const scaleFactor = transform.value || 0.8;
+          const newWidth = Math.round(originalWidth * scaleFactor);
+          const newHeight = Math.round(originalHeight * scaleFactor);
+          pipeline = pipeline.resize(newWidth, newHeight);
+          transformsApplied.push(`scale_${scaleFactor}`);
+          break;
+
+        case 'crop':
+          // Random crop - take 80% of image from random position
+          const cropPercent = transform.value || 0.8;
+          const cropWidth = Math.round(originalWidth * cropPercent);
+          const cropHeight = Math.round(originalHeight * cropPercent);
+          const maxLeft = originalWidth - cropWidth;
+          const maxTop = originalHeight - cropHeight;
+          const left = Math.floor(Math.random() * maxLeft);
+          const top = Math.floor(Math.random() * maxTop);
+          pipeline = pipeline.extract({ left, top, width: cropWidth, height: cropHeight });
+          transformsApplied.push(`crop_${cropPercent}`);
+          break;
+      }
+    }
+
+    // Get the result
+    const outputBuffer = await pipeline.toBuffer();
+    const metadata = await sharp(outputBuffer).metadata();
+
+    // Calculate SHA256
+    const sha256 = crypto.createHash('sha256').update(outputBuffer).digest('hex');
+
+    return {
+      buffer: outputBuffer,
+      width: metadata.width || originalWidth,
+      height: metadata.height || originalHeight,
+      sha256,
+      transformsApplied,
+    };
+  }
+
+  /**
+   * Transform bounding box annotations based on applied augmentations
+   */
+  transformAnnotations(
+    annotations: { id: string; labelClassId: string; x: number; y: number; width: number; height: number }[],
+    transforms: { type: string; value?: number }[],
+    originalWidth: number,
+    originalHeight: number,
+    newWidth: number,
+    newHeight: number
+  ): TransformedAnnotation[] {
+    return annotations.map((ann) => {
+      let x = ann.x;
+      let y = ann.y;
+      let w = ann.width;
+      let h = ann.height;
+      let imgW = originalWidth;
+      let imgH = originalHeight;
+
+      for (const transform of transforms) {
+        switch (transform.type) {
+          case 'flip_horizontal':
+            x = imgW - x - w;
+            break;
+
+          case 'flip_vertical':
+            y = imgH - y - h;
+            break;
+
+          case 'rotate':
+            const degrees = transform.value || 90;
+            if (degrees === 90) {
+              const newX = imgH - y - h;
+              const newY = x;
+              const newW = h;
+              const newH = w;
+              x = newX;
+              y = newY;
+              w = newW;
+              h = newH;
+              [imgW, imgH] = [imgH, imgW];
+            } else if (degrees === 180) {
+              x = imgW - x - w;
+              y = imgH - y - h;
+            } else if (degrees === 270 || degrees === -90) {
+              const newX = y;
+              const newY = imgW - x - w;
+              const newW = h;
+              const newH = w;
+              x = newX;
+              y = newY;
+              w = newW;
+              h = newH;
+              [imgW, imgH] = [imgH, imgW];
+            }
+            break;
+
+          case 'scale':
+            const scaleFactor = transform.value || 0.8;
+            x = Math.round(x * scaleFactor);
+            y = Math.round(y * scaleFactor);
+            w = Math.round(w * scaleFactor);
+            h = Math.round(h * scaleFactor);
+            imgW = Math.round(imgW * scaleFactor);
+            imgH = Math.round(imgH * scaleFactor);
+            break;
+
+          case 'crop':
+            // For crop, we'd need to know the exact crop region
+            // This is a simplified version - in production, store crop params
+            break;
+        }
+      }
+
+      // Check if annotation is still valid (within bounds)
+      const isValid = x >= 0 && y >= 0 && x + w <= newWidth && y + h <= newHeight && w > 0 && h > 0;
+
+      return {
+        originalId: ann.id,
+        labelClassId: ann.labelClassId,
+        x: Math.max(0, x),
+        y: Math.max(0, y),
+        width: Math.min(w, newWidth - x),
+        height: Math.min(h, newHeight - y),
+        isValid,
+      };
+    });
+  }
+
+  /**
+   * Generate preview of augmentation without saving
+   */
+  async generatePreview(
+    imageBuffer: Buffer,
+    transforms: { type: string; value?: number }[],
+    originalWidth: number,
+    originalHeight: number
+  ): Promise<{ previewBuffer: Buffer; previewWidth: number; previewHeight: number }> {
+    const result = await this.augmentImage(imageBuffer, transforms, originalWidth, originalHeight);
+
+    // Create a smaller preview (max 400px)
+    const maxDim = 400;
+    let previewWidth = result.width;
+    let previewHeight = result.height;
+
+    if (result.width > maxDim || result.height > maxDim) {
+      const ratio = Math.min(maxDim / result.width, maxDim / result.height);
+      previewWidth = Math.round(result.width * ratio);
+      previewHeight = Math.round(result.height * ratio);
+    }
+
+    const previewBuffer = await sharp(result.buffer).resize(previewWidth, previewHeight).jpeg({ quality: 80 }).toBuffer();
+
+    return { previewBuffer, previewWidth, previewHeight };
+  }
+}

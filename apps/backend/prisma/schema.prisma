@@ -1,0 +1,247 @@
+// ===========================================
+// Imagenix Database Schema
+// ===========================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ===========================================
+// User Management
+// ===========================================
+
+model User {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email         String    @unique @db.VarChar(320)
+  passwordHash  String    @map("password_hash") @db.VarChar(255)
+  fullName      String?   @map("full_name") @db.VarChar(120)
+  role          String    @default("user") @db.VarChar(20)
+  emailVerified Boolean   @default(false) @map("email_verified")
+  plan          String    @default("free") @db.VarChar(30)
+  planExpiresAt DateTime? @map("plan_expires_at")
+  lastLoginAt   DateTime? @map("last_login_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  sessions Session[]
+  projects Project[]
+  jobs     Job[]
+
+  @@index([plan], name: "users_plan_idx")
+  @@map("users")
+}
+
+model Session {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId           String    @map("user_id") @db.Uuid
+  refreshTokenHash String    @map("refresh_token_hash") @db.VarChar(255)
+  userAgent        String?   @map("user_agent") @db.VarChar(255)
+  ipAddress        String?   @map("ip_address") @db.VarChar(45)
+  revokedAt        DateTime? @map("revoked_at")
+  expiresAt        DateTime  @map("expires_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId], name: "sessions_user_id_idx")
+  @@index([expiresAt], name: "sessions_expires_at_idx")
+  @@map("sessions")
+}
+
+// ===========================================
+// Projects & Datasets
+// ===========================================
+
+model Project {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId       String   @map("user_id") @db.Uuid
+  name         String   @db.VarChar(120)
+  description  String?  @db.VarChar(500)
+  domainPolicy String   @default("standard") @map("domain_policy") @db.VarChar(30)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  datasets     Dataset[]
+  labelClasses LabelClass[]
+
+  @@unique([userId, name], name: "projects_user_name_uq")
+  @@index([userId], name: "projects_user_id_idx")
+  @@map("projects")
+}
+
+model Dataset {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  projectId String   @map("project_id") @db.Uuid
+  name      String   @db.VarChar(120)
+  status    String   @default("active") @db.VarChar(20)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  project  Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  images   Image[]
+  versions DatasetVersion[]
+  jobs     Job[]
+  exports  Export[]
+
+  @@unique([projectId, name], name: "datasets_project_name_uq")
+  @@index([projectId], name: "datasets_project_id_idx")
+  @@map("datasets")
+}
+
+model LabelClass {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  projectId String   @map("project_id") @db.Uuid
+  name      String   @db.VarChar(80)
+  colorHex  String   @default("#3B82F6") @map("color_hex") @db.Char(7)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  project     Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  annotations Annotation[]
+
+  @@unique([projectId, name], name: "label_classes_project_name_uq")
+  @@index([projectId], name: "label_classes_project_id_idx")
+  @@map("label_classes")
+}
+
+// ===========================================
+// Images & Annotations
+// ===========================================
+
+model Image {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  datasetId       String   @map("dataset_id") @db.Uuid
+  fileKey         String   @map("file_key") @db.VarChar(400)
+  fileName        String   @map("file_name") @db.VarChar(255)
+  mimeType        String   @map("mime_type") @db.VarChar(80)
+  width           Int
+  height          Int
+  sha256          String   @db.Char(64)
+  phash           String?  @db.VarChar(32)
+  isSynthetic     Boolean  @default(false) @map("is_synthetic")
+  syntheticSource String?  @map("synthetic_source") @db.VarChar(30)
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  dataset     Dataset      @relation(fields: [datasetId], references: [id], onDelete: Cascade)
+  annotations Annotation[]
+
+  @@unique([datasetId, sha256], name: "images_dataset_sha256_uq")
+  @@index([datasetId], name: "images_dataset_id_idx")
+  @@index([isSynthetic], name: "images_is_synthetic_idx")
+  @@index([createdAt], name: "images_created_at_idx")
+  @@map("images")
+}
+
+model Annotation {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  imageId      String   @map("image_id") @db.Uuid
+  labelClassId String   @map("label_class_id") @db.Uuid
+  x            Int
+  y            Int
+  width        Int
+  height       Int
+  source       String   @default("manual") @db.VarChar(10)
+  status       String   @default("approved") @db.VarChar(10)
+  confidence   Decimal? @db.Decimal(4, 3)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  image      Image      @relation(fields: [imageId], references: [id], onDelete: Cascade)
+  labelClass LabelClass @relation(fields: [labelClassId], references: [id], onDelete: Cascade)
+
+  @@index([imageId], name: "annotations_image_id_idx")
+  @@index([labelClassId], name: "annotations_label_class_id_idx")
+  @@index([imageId, status], name: "annotations_image_status_idx")
+  @@index([source], name: "annotations_source_idx")
+  @@map("annotations")
+}
+
+// ===========================================
+// Dataset Versioning
+// ===========================================
+
+model DatasetVersion {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  datasetId       String   @map("dataset_id") @db.Uuid
+  name            String   @db.VarChar(120)
+  parentVersionId String?  @map("parent_version_id") @db.Uuid
+  notes           String?  @db.VarChar(500)
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  dataset       Dataset         @relation(fields: [datasetId], references: [id], onDelete: Cascade)
+  parentVersion DatasetVersion? @relation("VersionHistory", fields: [parentVersionId], references: [id], onDelete: SetNull)
+  childVersions DatasetVersion[] @relation("VersionHistory")
+
+  @@index([datasetId], name: "dataset_versions_dataset_id_idx")
+  @@index([parentVersionId], name: "dataset_versions_parent_id_idx")
+  @@index([datasetId, createdAt], name: "dataset_versions_dataset_created_idx")
+  @@map("dataset_versions")
+}
+
+// ===========================================
+// Jobs & Exports
+// ===========================================
+
+model Job {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId       String    @map("user_id") @db.Uuid
+  datasetId    String    @map("dataset_id") @db.Uuid
+  jobType      String    @map("job_type") @db.VarChar(30)
+  status       String    @default("queued") @db.VarChar(15)
+  progress     Int       @default(0)
+  errorCode    String?   @map("error_code") @db.VarChar(40)
+  errorMessage String?   @map("error_message") @db.VarChar(500)
+  metadata     Json?     @default("{}")
+  startedAt    DateTime? @map("started_at")
+  finishedAt   DateTime? @map("finished_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dataset Dataset  @relation(fields: [datasetId], references: [id], onDelete: Cascade)
+  export  Export?
+
+  @@index([userId], name: "jobs_user_id_idx")
+  @@index([datasetId], name: "jobs_dataset_id_idx")
+  @@index([datasetId, status], name: "jobs_dataset_status_idx")
+  @@index([createdAt], name: "jobs_created_at_idx")
+  @@map("jobs")
+}
+
+model Export {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  jobId         String   @unique @map("job_id") @db.Uuid
+  datasetId     String   @map("dataset_id") @db.Uuid
+  format        String   @db.VarChar(10)
+  fileKey       String   @map("file_key") @db.VarChar(400)
+  fileSizeBytes BigInt   @map("file_size_bytes")
+  expiresAt     DateTime @map("expires_at")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  job     Job     @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  dataset Dataset @relation(fields: [datasetId], references: [id], onDelete: Cascade)
+
+  @@index([expiresAt], name: "exports_expires_at_idx")
+  @@index([datasetId], name: "exports_dataset_id_idx")
+  @@map("exports")
+}
