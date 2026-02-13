@@ -3,6 +3,8 @@ import { AugmentationController } from './augmentation.controller';
 import { AugmentationService } from './augmentation.service';
 import { ClassicalAugmentationService } from './classical-augmentation.service';
 import { GenerativeAugmentationService } from './generative-augmentation.service';
+import { RunPodProvider } from './providers/runpod.provider';
+import { ReplicateProvider } from './providers/replicate.provider';
 import { DatasetsModule } from '../datasets/datasets.module';
 import { ImagesModule } from '../images/images.module';
 
@@ -13,6 +15,8 @@ import { ImagesModule } from '../images/images.module';
     AugmentationService,
     ClassicalAugmentationService,
     GenerativeAugmentationService,
+    RunPodProvider,
+    ReplicateProvider,
   ],
   exports: [AugmentationService],
 })

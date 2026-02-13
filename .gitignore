@@ -47,6 +47,11 @@ storage
 # Docker
 docker-data
 
+# Python
+.venv
+__pycache__
+*.pyc
+
 # OS
 Thumbs.db
 *.bak

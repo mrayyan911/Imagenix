@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Slider } from '@/components/ui/slider';
+import { Progress } from '@/components/ui/progress';
 import {
   datasetsApi,
   imagesApi,
@@ -57,6 +58,9 @@ export default function AugmentationStudioPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isPreviewing, setIsPreviewing] = useState(false);
+  const [jobProgress, setJobProgress] = useState(0);
+  const [jobLabel, setJobLabel] = useState('');
+  const [jobStartTime, setJobStartTime] = useState<number | null>(null);
 
   // Classical augmentation settings
   const [transforms, setTransforms] = useState<Transform[]>([]);
@@ -198,6 +202,10 @@ export default function AugmentationStudioPage() {
     }
 
     setIsProcessing(true);
+    setJobProgress(0);
+    setJobStartTime(Date.now());
+    const imgCount = selectedImageIds.length > 0 ? selectedImageIds.length : images.length;
+    setJobLabel(`0 of ${imgCount * multiplier} images generated`);
     try {
       const response = await augmentationApi.createClassical(datasetId, {
         transforms: enabledTransforms,
@@ -210,10 +218,9 @@ export default function AugmentationStudioPage() {
         description: 'Processing images in background...',
       });
 
-      // Poll for job completion
       const jobId = response.data.data?.jobId;
       if (jobId) {
-        pollJobStatus(jobId);
+        pollJobStatus(jobId, imgCount * multiplier, 'generated');
       }
     } catch (error: any) {
       toast({
@@ -222,11 +229,17 @@ export default function AugmentationStudioPage() {
         variant: 'destructive',
       });
       setIsProcessing(false);
+      setJobStartTime(null);
     }
   };
 
   const handleRunGenerative = async () => {
     setIsProcessing(true);
+    setJobProgress(0);
+    setJobStartTime(Date.now());
+    const imgCount = selectedImageIds.length > 0 ? selectedImageIds.length : images.length;
+    const total = imgCount * generativeQuantity;
+    setJobLabel(`0 of ${total} images generated`);
     try {
       const response = await augmentationApi.createGenerative(datasetId, {
         variationType: generativeVariation,
@@ -242,7 +255,7 @@ export default function AugmentationStudioPage() {
 
       const jobId = response.data.data?.jobId;
       if (jobId) {
-        pollJobStatus(jobId);
+        pollJobStatus(jobId, total, 'generated');
       }
     } catch (error: any) {
       toast({
@@ -251,31 +264,61 @@ export default function AugmentationStudioPage() {
         variant: 'destructive',
       });
       setIsProcessing(false);
+      setJobStartTime(null);
     }
   };
 
-  const pollJobStatus = async (jobId: string) => {
-    const poll = async () => {
-      const response = await jobsApi.getStatus(jobId);
-      const job = response.data.data;
+  const getEstimatedTime = (progress: number, startTime: number | null): string | undefined => {
+    if (!startTime || progress <= 0 || progress >= 100) return undefined;
+    const elapsed = (Date.now() - startTime) / 1000;
+    const total = elapsed / (progress / 100);
+    const remaining = Math.max(0, Math.ceil(total - elapsed));
+    if (remaining < 60) return `~${remaining}s remaining`;
+    return `~${Math.ceil(remaining / 60)}min remaining`;
+  };
 
-      if (job?.status === 'succeeded') {
-        toast({
-          title: 'Augmentation complete',
-          description: 'New images have been created.',
-          variant: 'success',
-        });
-        setIsProcessing(false);
-        loadData();
-      } else if (job?.status === 'failed') {
-        toast({
-          title: 'Augmentation failed',
-          description: job.errorMessage || 'Unknown error',
-          variant: 'destructive',
-        });
-        setIsProcessing(false);
-      } else if (job?.status === 'running' || job?.status === 'queued') {
-        setTimeout(poll, 2000);
+  const pollJobStatus = async (jobId: string, totalImages: number, verb: string) => {
+    const poll = async () => {
+      try {
+        const response = await jobsApi.getStatus(jobId);
+        const job = response.data.data;
+
+        if (job?.progress != null) {
+          setJobProgress(job.progress);
+          const done = Math.round((job.progress / 100) * totalImages);
+          setJobLabel(`${done} of ${totalImages} images ${verb}`);
+        }
+
+        if (job?.status === 'succeeded') {
+          setJobProgress(100);
+          setJobLabel(`${totalImages} of ${totalImages} images ${verb}`);
+          toast({
+            title: 'Augmentation complete',
+            description: 'New images have been created.',
+            variant: 'success',
+          });
+          setTimeout(() => {
+            setIsProcessing(false);
+            setJobProgress(0);
+            setJobStartTime(null);
+            setJobLabel('');
+          }, 2000);
+          loadData();
+        } else if (job?.status === 'failed') {
+          toast({
+            title: 'Augmentation failed',
+            description: job.errorMessage || 'Unknown error',
+            variant: 'destructive',
+          });
+          setIsProcessing(false);
+          setJobProgress(0);
+          setJobStartTime(null);
+          setJobLabel('');
+        } else if (job?.status === 'running' || job?.status === 'queued') {
+          setTimeout(poll, 2000);
+        }
+      } catch {
+        setTimeout(poll, 3000);
       }
     };
 
@@ -314,6 +357,91 @@ export default function AugmentationStudioPage() {
             </p>
           </div>
         </div>
+
+        {/* Image Selection */}
+        {(() => {
+          const sourceImages = images.filter((img) => !img.isSynthetic);
+          return sourceImages.length > 0 ? (
+          <Card className="mb-6">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle>Select Images</CardTitle>
+                  <CardDescription>
+                    Choose which source images to augment. Leave unselected to augment all.
+                    {images.length !== sourceImages.length && (
+                      <span className="text-neutral-400 ml-1">
+                        ({images.length - sourceImages.length} synthetic images hidden)
+                      </span>
+                    )}
+                  </CardDescription>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-neutral-500">
+                    {selectedImageIds.length === 0
+                      ? `All ${sourceImages.length} source images`
+                      : `${selectedImageIds.length} of ${sourceImages.length} selected`}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      if (selectedImageIds.length === sourceImages.length) {
+                        setSelectedImageIds([]);
+                      } else {
+                        setSelectedImageIds(sourceImages.map((img) => img.id));
+                      }
+                    }}
+                  >
+                    {selectedImageIds.length === sourceImages.length ? 'Deselect All' : 'Select All'}
+                  </Button>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-2 max-h-48 overflow-y-auto">
+                {sourceImages.map((img) => {
+                  const isSelected = selectedImageIds.includes(img.id);
+                  return (
+                    <button
+                      key={img.id}
+                      onClick={() => {
+                        setSelectedImageIds((prev) =>
+                          isSelected
+                            ? prev.filter((id) => id !== img.id)
+                            : [...prev, img.id]
+                        );
+                      }}
+                      className={`relative aspect-square rounded-md overflow-hidden border-2 transition-all ${
+                        isSelected
+                          ? 'border-primary-500 ring-2 ring-primary-200'
+                          : 'border-transparent hover:border-neutral-300'
+                      }`}
+                    >
+                      {img.url ? (
+                        <img
+                          src={img.url}
+                          alt={img.fileName}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-full h-full bg-neutral-100 flex items-center justify-center">
+                          <span className="text-xs text-neutral-400 truncate px-1">{img.fileName}</span>
+                        </div>
+                      )}
+                      {isSelected && (
+                        <div className="absolute top-0.5 right-0.5 bg-primary-500 text-white rounded-full w-4 h-4 flex items-center justify-center">
+                          <CheckCircle className="h-3 w-3" />
+                        </div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+          ) : null;
+        })()}
 
         <div className="grid gap-6 lg:grid-cols-3">
           {/* Classical Augmentation */}
@@ -427,6 +555,15 @@ export default function AugmentationStudioPage() {
                         Run Augmentation ({enabledCount} transforms)
                       </Button>
                     </div>
+
+                    {/* Progress bar for classical augmentation */}
+                    {isProcessing && jobProgress >= 0 && (
+                      <Progress
+                        value={jobProgress}
+                        label={jobLabel}
+                        estimatedTime={getEstimatedTime(jobProgress, jobStartTime)}
+                      />
+                    )}
                   </div>
                 )}
               </CardContent>
@@ -514,6 +651,15 @@ export default function AugmentationStudioPage() {
                       )}
                       Generate Variations
                     </Button>
+
+                    {/* Progress bar for generative augmentation */}
+                    {isProcessing && jobProgress >= 0 && (
+                      <Progress
+                        value={jobProgress}
+                        label={jobLabel}
+                        estimatedTime={getEstimatedTime(jobProgress, jobStartTime)}
+                      />
+                    )}
                   </div>
                 )}
               </CardContent>

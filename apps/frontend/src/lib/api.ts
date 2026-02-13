@@ -182,7 +182,7 @@ export const annotationsApi = {
 export const jobsApi = {
   createAutoAnnotation: (
     datasetId: string,
-    data: { className: string; confidenceThreshold?: number }
+    data: { className: string; confidenceThreshold?: number; imageIds?: string[] }
   ) =>
     api.post<ApiResponse<{ jobId: string; status: string }>>(
       `/datasets/${datasetId}/jobs/auto-annotate`,

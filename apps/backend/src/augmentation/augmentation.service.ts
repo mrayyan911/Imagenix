@@ -366,7 +366,12 @@ export class AugmentationService {
   }
 
   /**
-   * Process generative augmentation job
+   * Process generative augmentation job.
+   *
+   * For each source image × quantity, calls the GenerativeAugmentationService
+   * which in turn contacts the ML microservice (RunPod) or Replicate.
+   * Each result is validated for hallucination; retries happen automatically
+   * inside the service layer.
    */
   private async processGenerativeAugmentation(jobId: string) {
     await this.prisma.job.update({
@@ -385,29 +390,73 @@ export class AugmentationService {
         imageIds: string[];
       };
 
-      // Get images
+      // Get images to augment
       const whereClause: any = { datasetId: job.datasetId };
       if (metadata.imageIds.length > 0) {
         whereClause.id = { in: metadata.imageIds };
       }
 
       const images = await this.prisma.image.findMany({ where: whereClause });
+      const totalOperations = images.length * metadata.quantity;
+      let completed = 0;
 
       for (const image of images) {
         const imageBuffer = await this.storageService.downloadFile(image.fileKey);
 
         for (let i = 0; i < metadata.quantity; i++) {
-          // This will throw an error with instructions since it's not yet implemented
           const result = await this.generativeAugmentation.generateVariation(
             imageBuffer,
             metadata.variationType,
             metadata.prompt,
             image.width,
-            image.height
+            image.height,
           );
 
-          // If we reach here (future implementation), save the generated image
-          // ... similar to classical augmentation
+          // Upload generated image to storage
+          const fileKey = this.storageService.generateFileKey(
+            job.datasetId,
+            `gen_${metadata.variationType}_${i}_${image.fileName}`,
+          );
+          await this.storageService.uploadFile(fileKey, result.buffer, 'image/png');
+
+          // Create image record — mark as synthetic with generation metadata
+          try {
+            await this.prisma.image.create({
+              data: {
+                datasetId: job.datasetId,
+                fileKey,
+                fileName: `gen_${metadata.variationType}_${i}_${image.fileName}`,
+                mimeType: 'image/png',
+                width: result.width,
+                height: result.height,
+                sha256: result.sha256,
+                isSynthetic: true,
+                syntheticSource: `generative_${metadata.variationType}`,
+              },
+            });
+          } catch (dbErr: any) {
+            if (dbErr?.code === 'P2002') {
+              // Duplicate sha256 — skip this image (Replicate returned an identical result)
+              console.warn(
+                `[Augmentation] Skipping duplicate image (same sha256 already exists in dataset): iteration=${i}`,
+              );
+              continue;
+            }
+            throw dbErr;
+          }
+
+          completed++;
+          const progress = Math.round((completed / totalOperations) * 100);
+          await this.prisma.job.update({
+            where: { id: jobId },
+            data: { progress },
+          });
+
+          console.log(
+            `[Augmentation] Generative job ${jobId}: ${completed}/${totalOperations} — ` +
+            `validated=${result.validated}, similarity=${result.similarityScore}, ` +
+            `attempts=${result.attempts}`,
+          );
         }
       }
 
@@ -415,6 +464,11 @@ export class AugmentationService {
         where: { id: jobId },
         data: { status: 'succeeded', progress: 100, finishedAt: new Date() },
       });
+
+      console.log(
+        `[Augmentation] Generative job ${jobId} completed: ` +
+        `${totalOperations} images generated`,
+      );
     } catch (error) {
       await this.prisma.job.update({
         where: { id: jobId },
@@ -425,6 +479,7 @@ export class AugmentationService {
           finishedAt: new Date(),
         },
       });
+      console.error(`[Augmentation] Generative job ${jobId} failed:`, error);
     }
   }
 }

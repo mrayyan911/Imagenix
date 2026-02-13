@@ -1,0 +1,17 @@
+fastapi==0.109.2
+uvicorn[standard]==0.27.1
+python-multipart==0.0.9
+torch==2.2.0
+torchvision==0.17.0
+diffusers==0.30.3
+transformers==4.44.2
+accelerate==0.33.0
+safetensors==0.4.2
+controlnet-aux==0.0.8
+opencv-python==4.9.0.80
+Pillow==10.2.0
+numpy==1.26.4
+xformers==0.0.24
+pydantic==2.6.1
+python-dotenv==1.0.1
+scikit-image==0.22.0
