@@ -19,9 +19,7 @@ export default function LandingPage() {
         <div className="mx-auto max-w-7xl px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <div className="h-8 w-8 rounded-lg bg-primary-500 flex items-center justify-center">
-                <span className="text-white font-bold text-sm">IX</span>
-              </div>
+              <img src="/logo.png" alt="Imagenix" className="h-8 w-8 rounded-lg object-contain" />
               <span className="text-xl font-semibold text-neutral-900">Imagenix</span>
             </div>
             <div className="flex items-center gap-4">

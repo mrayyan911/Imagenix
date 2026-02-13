@@ -62,9 +62,7 @@ export function AppShell({ children }: AppShellProps) {
         <div className="flex h-16 items-center justify-between px-6">
           {/* Logo */}
           <Link href="/dashboard" className="flex items-center gap-2">
-            <div className="h-8 w-8 rounded-lg bg-primary-500 flex items-center justify-center">
-              <span className="text-white font-bold text-sm">IX</span>
-            </div>
+            <img src="/logo.png" alt="Imagenix" className="h-8 w-8 rounded-lg object-contain" />
             <span className="text-xl font-semibold text-neutral-900">Imagenix</span>
           </Link>
 
