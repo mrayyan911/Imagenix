@@ -1,12 +1,13 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
+import { LabelClassesManager, type LabelClassesManagerRef } from '@/components/label-classes-manager';
 import {
   datasetsApi,
   imagesApi,
@@ -39,6 +40,8 @@ export default function DatasetDetailPage() {
   const { toast } = useToast();
   const projectId = params.id as string;
   const datasetId = params.datasetId as string;
+
+  const labelClassesManagerRef = useRef<LabelClassesManagerRef>(null);
 
   const [dataset, setDataset] = useState<Dataset | null>(null);
   const [images, setImages] = useState<Image[]>([]);
@@ -263,6 +266,7 @@ export default function DatasetDetailPage() {
             setAnnotationProgress(0);
           }, 2000);
           loadData();
+          labelClassesManagerRef.current?.refresh();
         } else if (job?.status === 'failed') {
           toast({
             title: 'Auto-annotation failed',
@@ -607,6 +611,14 @@ export default function DatasetDetailPage() {
                 </Button>
               </CardContent>
             </Card>
+
+            {/* Label Classes Manager */}
+            <LabelClassesManager
+              ref={labelClassesManagerRef}
+              projectId={projectId}
+              selectedImageIds={selectedImageIds}
+              onAnnotationsDeleted={loadData}
+            />
           </div>
         </div>
       </div>

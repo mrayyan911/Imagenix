@@ -120,11 +120,30 @@ export const labelClassesApi = {
   list: (projectId: string) =>
     api.get<ApiResponse<{ classes: LabelClass[] }>>(`/projects/${projectId}/classes`),
 
+  listWithCounts: (projectId: string) =>
+    api.get<ApiResponse<{ classes: LabelClassWithCount[] }>>(
+      `/projects/${projectId}/classes?includeCounts=true`
+    ),
+
   create: (projectId: string, data: { name: string; colorHex?: string }) =>
     api.post<ApiResponse<{ classId: string }>>(`/projects/${projectId}/classes`, data),
 
-  delete: (projectId: string, classId: string) =>
-    api.delete(`/projects/${projectId}/classes/${classId}`),
+  delete: (projectId: string, classId: string, force?: boolean) =>
+    api.delete<ApiResponse<{ success: boolean; deletedAnnotations?: number }>>(
+      `/projects/${projectId}/classes/${classId}${force ? '?force=true' : ''}`
+    ),
+
+  deleteAll: (projectId: string) =>
+    api.delete<ApiResponse<{ deleted: number }>>(`/projects/${projectId}/classes`),
+
+  deleteAnnotationsFromImages: (
+    projectId: string,
+    data: { imageIds: string[]; labelClassIds?: string[] }
+  ) =>
+    api.post<ApiResponse<{ deleted: number; deletedClasses: number }>>(
+      `/projects/${projectId}/classes/annotations/delete-from-images`,
+      data
+    ),
 };
 
 // Images API
@@ -325,6 +344,10 @@ export interface LabelClass {
   name: string;
   colorHex: string;
   createdAt: string;
+}
+
+export interface LabelClassWithCount extends LabelClass {
+  annotationCount: number;
 }
 
 export interface Image {
