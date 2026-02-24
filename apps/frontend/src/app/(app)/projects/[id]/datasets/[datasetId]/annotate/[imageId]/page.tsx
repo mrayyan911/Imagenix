@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
 import {
   imagesApi,
   annotationsApi,
@@ -24,7 +25,21 @@ import {
   Loader2,
   MousePointer,
   Square,
+  Plus,
 } from 'lucide-react';
+
+const PRESET_COLORS = [
+  '#3B82F6', // Blue
+  '#EF4444', // Red
+  '#10B981', // Green
+  '#F59E0B', // Amber
+  '#8B5CF6', // Purple
+  '#EC4899', // Pink
+  '#06B6D4', // Cyan
+  '#F97316', // Orange
+  '#84CC16', // Lime
+  '#6366F1', // Indigo
+];
 
 export default function AnnotatePage() {
   const params = useParams();
@@ -63,6 +78,13 @@ export default function AnnotatePage() {
   const [scale, setScale] = useState(1);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [drawStart, setDrawStart] = useState<{ x: number; y: number } | null>(null);
+
+  // New label class form state
+  const [showAddLabel, setShowAddLabel] = useState(false);
+  const [newLabelName, setNewLabelName] = useState('');
+  const [newLabelColor, setNewLabelColor] = useState(PRESET_COLORS[0]);
+  const [isCreatingLabel, setIsCreatingLabel] = useState(false);
+  const [labelError, setLabelError] = useState<string | null>(null);
 
   // Load image and annotations
   useEffect(() => {
@@ -337,6 +359,83 @@ export default function AnnotatePage() {
     }
   };
 
+  // Create new label class
+  const handleCreateLabelClass = async () => {
+    const trimmedName = newLabelName.trim();
+    
+    // Validation
+    if (!trimmedName) {
+      setLabelError('Label name is required');
+      return;
+    }
+
+    if (trimmedName.length > 80) {
+      setLabelError('Label name must be 80 characters or less');
+      return;
+    }
+
+    // Check for duplicate names (case-insensitive)
+    const isDuplicate = labelClasses.some(
+      (cls) => cls.name.toLowerCase() === trimmedName.toLowerCase()
+    );
+    if (isDuplicate) {
+      setLabelError('A label with this name already exists');
+      return;
+    }
+
+    setIsCreatingLabel(true);
+    setLabelError(null);
+
+    try {
+      const response = await labelClassesApi.create(projectId, {
+        name: trimmedName,
+        colorHex: newLabelColor,
+      });
+
+      const newClass: LabelClass = {
+        id: response.data.data!.classId,
+        projectId,
+        name: trimmedName,
+        colorHex: newLabelColor,
+        createdAt: new Date().toISOString(),
+      };
+
+      setLabelClasses([...labelClasses, newClass]);
+      selectLabelClass(newClass.id);
+
+      // Reset form
+      setNewLabelName('');
+      setNewLabelColor(getNextColor());
+      setShowAddLabel(false);
+
+      toast({
+        title: 'Label class created',
+        description: `"${trimmedName}" is now available for annotation`,
+        variant: 'success',
+      });
+    } catch (error: any) {
+      const message = error.response?.data?.error?.message || 'Failed to create label class';
+      setLabelError(message);
+    } finally {
+      setIsCreatingLabel(false);
+    }
+  };
+
+  // Get next available color (one not already in use)
+  const getNextColor = () => {
+    const usedColors = new Set(labelClasses.map((cls) => cls.colorHex));
+    const availableColor = PRESET_COLORS.find((color) => !usedColors.has(color));
+    return availableColor || PRESET_COLORS[Math.floor(Math.random() * PRESET_COLORS.length)];
+  };
+
+  // Initialize color when showing form
+  const handleShowAddLabel = () => {
+    setNewLabelColor(getNextColor());
+    setNewLabelName('');
+    setLabelError(null);
+    setShowAddLabel(true);
+  };
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
@@ -390,25 +489,132 @@ export default function AnnotatePage() {
       <div className="w-80 border-l border-neutral-200 bg-white flex flex-col">
         {/* Label Classes */}
         <div className="p-4 border-b border-neutral-200">
-          <h3 className="font-semibold text-sm mb-3">Label Classes</h3>
-          <div className="space-y-1">
-            {labelClasses.map((cls) => (
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="font-semibold text-sm">Label Classes</h3>
+            {!showAddLabel && (
               <button
-                key={cls.id}
-                onClick={() => selectLabelClass(cls.id)}
-                className={`w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors ${
-                  selectedLabelClassId === cls.id
-                    ? 'bg-primary-100 text-primary-700'
-                    : 'hover:bg-neutral-100'
-                }`}
+                type="button"
+                onClick={handleShowAddLabel}
+                className="p-1 rounded hover:bg-neutral-100 text-neutral-500 hover:text-primary-600 transition-colors"
+                title="Add new label class"
               >
-                <div
-                  className="h-4 w-4 rounded"
-                  style={{ backgroundColor: cls.colorHex }}
-                />
-                {cls.name}
+                <Plus className="h-4 w-4" />
               </button>
-            ))}
+            )}
+          </div>
+
+          {/* Add Label Form */}
+          {showAddLabel && (
+            <div className="mb-3 p-3 bg-neutral-50 rounded-lg border border-neutral-200">
+              <div className="space-y-3">
+                <div>
+                  <Input
+                    placeholder="Label name"
+                    value={newLabelName}
+                    onChange={(e) => {
+                      setNewLabelName(e.target.value);
+                      setLabelError(null);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleCreateLabelClass();
+                      } else if (e.key === 'Escape') {
+                        setShowAddLabel(false);
+                      }
+                    }}
+                    className="h-8 text-sm"
+                    autoFocus
+                    maxLength={80}
+                  />
+                  {labelError && (
+                    <p className="text-xs text-red-600 mt-1">{labelError}</p>
+                  )}
+                </div>
+
+                {/* Color Picker */}
+                <div>
+                  <p className="text-xs text-neutral-500 mb-2">Color</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {PRESET_COLORS.map((color) => (
+                      <button
+                        key={color}
+                        type="button"
+                        onClick={() => setNewLabelColor(color)}
+                        className={`w-6 h-6 rounded-md transition-all ${
+                          newLabelColor === color
+                            ? 'ring-2 ring-offset-1 ring-neutral-400 scale-110'
+                            : 'hover:scale-105'
+                        }`}
+                        style={{ backgroundColor: color }}
+                        title={color}
+                      />
+                    ))}
+                  </div>
+                </div>
+
+                {/* Actions */}
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="flex-1 h-8"
+                    onClick={() => setShowAddLabel(false)}
+                    disabled={isCreatingLabel}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    size="sm"
+                    className="flex-1 h-8"
+                    onClick={handleCreateLabelClass}
+                    disabled={isCreatingLabel || !newLabelName.trim()}
+                  >
+                    {isCreatingLabel ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      'Add'
+                    )}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Label Classes List */}
+          <div className="space-y-1">
+            {labelClasses.length === 0 && !showAddLabel ? (
+              <div className="text-center py-4">
+                <p className="text-sm text-neutral-500 mb-2">No label classes yet</p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleShowAddLabel}
+                  className="gap-1"
+                >
+                  <Plus className="h-3 w-3" />
+                  Add Label Class
+                </Button>
+              </div>
+            ) : (
+              labelClasses.map((cls) => (
+                <button
+                  key={cls.id}
+                  onClick={() => selectLabelClass(cls.id)}
+                  className={`w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors ${
+                    selectedLabelClassId === cls.id
+                      ? 'bg-primary-100 text-primary-700'
+                      : 'hover:bg-neutral-100'
+                  }`}
+                >
+                  <div
+                    className="h-4 w-4 rounded"
+                    style={{ backgroundColor: cls.colorHex }}
+                  />
+                  {cls.name}
+                </button>
+              ))
+            )}
           </div>
         </div>
 
