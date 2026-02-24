@@ -230,7 +230,7 @@ model Export {
   id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   jobId         String   @unique @map("job_id") @db.Uuid
   datasetId     String   @map("dataset_id") @db.Uuid
-  format        String   @db.VarChar(10)
+  format        String   @db.VarChar(20)
   fileKey       String   @map("file_key") @db.VarChar(400)
   fileSizeBytes BigInt   @map("file_size_bytes")
   expiresAt     DateTime @map("expires_at")

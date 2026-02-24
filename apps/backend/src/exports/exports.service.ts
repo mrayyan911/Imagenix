@@ -26,7 +26,7 @@ export class ExportsService {
     await this.datasetsService.verifyOwnership(datasetId, userId);
 
     // Validate format
-    const validFormats = ['coco', 'yolo', 'voc'];
+    const validFormats = ['coco', 'yolo', 'voc', 'labeled_png', 'labeled_jpg'];
     if (!validFormats.includes(dto.format)) {
       throw new BadRequestException(`Invalid format. Must be one of: ${validFormats.join(', ')}`);
     }
@@ -142,13 +142,22 @@ export class ExportsService {
         annotationStatus: string[];
       };
 
+      // Progress callback for labeled image exports
+      const progressCallback = async (progress: number) => {
+        await this.prisma.job.update({
+          where: { id: jobId },
+          data: { progress },
+        });
+      };
+
       // Generate export
       const exportData = await this.exportGenerator.generate(
         jobId,
         job.datasetId,
-        metadata.format as 'coco' | 'yolo' | 'voc',
+        metadata.format as 'coco' | 'yolo' | 'voc' | 'labeled_png' | 'labeled_jpg',
         metadata.includeImages,
-        metadata.annotationStatus
+        metadata.annotationStatus,
+        progressCallback
       );
 
       // Upload to storage

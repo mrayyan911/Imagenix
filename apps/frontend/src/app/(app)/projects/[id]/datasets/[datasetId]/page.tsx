@@ -649,15 +649,30 @@ export default function DatasetDetailPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <select
-                  className="w-full h-10 px-3 rounded-md border border-neutral-300 bg-white text-sm"
-                  value={exportFormat}
-                  onChange={(e) => setExportFormat(e.target.value)}
-                >
-                  <option value="coco">COCO Format</option>
-                  <option value="yolo">YOLO Format</option>
-                  <option value="voc">Pascal VOC Format</option>
-                </select>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-neutral-700">Format</label>
+                  <select
+                    className="w-full h-10 px-3 rounded-md border border-neutral-300 bg-white text-sm"
+                    value={exportFormat}
+                    onChange={(e) => setExportFormat(e.target.value)}
+                  >
+                    <optgroup label="For Model Training">
+                      <option value="coco">COCO Format</option>
+                      <option value="yolo">YOLO Format</option>
+                      <option value="voc">Pascal VOC Format</option>
+                    </optgroup>
+                    <optgroup label="Labeled Images (Visual)">
+                      <option value="labeled_jpg">JPG with Labels (Smaller)</option>
+                      <option value="labeled_png">PNG with Labels (Lossless)</option>
+                    </optgroup>
+                  </select>
+                  {(exportFormat === 'labeled_jpg' || exportFormat === 'labeled_png') && (
+                    <p className="text-xs text-neutral-500">
+                      Downloads a ZIP with images that have bounding boxes and labels drawn on them.
+                      Best for visual review, not model training.
+                    </p>
+                  )}
+                </div>
                 <Button
                   className="w-full"
                   variant="outline"
@@ -669,7 +684,7 @@ export default function DatasetDetailPage() {
                   ) : (
                     <Download className="h-4 w-4 mr-2" />
                   )}
-                  Export
+                  {exportFormat.startsWith('labeled_') ? 'Download Labeled Images' : 'Export'}
                 </Button>
               </CardContent>
             </Card>

@@ -2,7 +2,7 @@ import { IsString, IsBoolean, IsOptional, IsArray, IsIn } from 'class-validator'
 
 export class CreateExportDto {
   @IsString()
-  @IsIn(['coco', 'yolo', 'voc'])
+  @IsIn(['coco', 'yolo', 'voc', 'labeled_png', 'labeled_jpg'])
   format: string;
 
   @IsOptional()
