@@ -197,7 +197,7 @@ export class AugmentationService {
       image.height
     );
 
-    // Transform annotations for preview
+    // Transform annotations for preview using actual transformed dimensions
     const transformedAnnotations = this.classicalAugmentation.transformAnnotations(
       image.annotations.map((a) => ({
         id: a.id,
@@ -210,9 +210,20 @@ export class AugmentationService {
       transforms,
       image.width,
       image.height,
-      preview.previewWidth,
-      preview.previewHeight
+      preview.actualWidth,
+      preview.actualHeight
     );
+
+    // Scale annotations to preview size
+    const scaleX = preview.previewWidth / preview.actualWidth;
+    const scaleY = preview.previewHeight / preview.actualHeight;
+    const scaledAnnotations = transformedAnnotations.map((a) => ({
+      ...a,
+      x: Math.round(a.x * scaleX),
+      y: Math.round(a.y * scaleY),
+      width: Math.round(a.width * scaleX),
+      height: Math.round(a.height * scaleY),
+    }));
 
     return {
       preview: preview.previewBuffer.toString('base64'),
@@ -220,9 +231,9 @@ export class AugmentationService {
       previewHeight: preview.previewHeight,
       originalWidth: image.width,
       originalHeight: image.height,
-      annotations: transformedAnnotations,
-      validAnnotationCount: transformedAnnotations.filter((a) => a.isValid).length,
-      invalidAnnotationCount: transformedAnnotations.filter((a) => !a.isValid).length,
+      annotations: scaledAnnotations,
+      validAnnotationCount: scaledAnnotations.filter((a) => a.isValid).length,
+      invalidAnnotationCount: scaledAnnotations.filter((a) => !a.isValid).length,
     };
   }
 

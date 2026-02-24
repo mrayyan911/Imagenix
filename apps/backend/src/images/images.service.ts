@@ -238,6 +238,49 @@ export class ImagesService {
     return { success: true };
   }
 
+  async bulkDelete(datasetId: string, userId: string, imageIds: string[]) {
+    // Verify dataset ownership
+    await this.datasetsService.verifyOwnership(datasetId, userId);
+
+    if (!imageIds || imageIds.length === 0) {
+      return { deleted: 0 };
+    }
+
+    // Get all images to delete (verify they belong to this dataset)
+    const images = await this.prisma.image.findMany({
+      where: {
+        id: { in: imageIds },
+        datasetId,
+      },
+      select: { id: true, fileKey: true },
+    });
+
+    if (images.length === 0) {
+      return { deleted: 0 };
+    }
+
+    // Delete from storage
+    for (const image of images) {
+      try {
+        await this.storageService.deleteFile(image.fileKey);
+      } catch (err) {
+        console.error(`Failed to delete file ${image.fileKey}:`, err);
+      }
+    }
+
+    // Delete from database (cascades to annotations)
+    const result = await this.prisma.image.deleteMany({
+      where: {
+        id: { in: images.map((i) => i.id) },
+      },
+    });
+
+    // Invalidate cache
+    await this.redisService.del(`dataset:${datasetId}:summary`);
+
+    return { deleted: result.count };
+  }
+
   async verifyOwnership(imageId: string, userId: string) {
     const image = await this.prisma.image.findUnique({
       where: { id: imageId },

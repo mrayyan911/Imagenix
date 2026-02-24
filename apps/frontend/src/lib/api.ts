@@ -175,7 +175,12 @@ export const imagesApi = {
       data
     ),
 
-  delete: (id: string) => api.delete(`/images/${id}`),
+  delete: (id: string) => api.delete<ApiResponse<{ success: boolean }>>(`/images/${id}`),
+
+  bulkDelete: (datasetId: string, imageIds: string[]) =>
+    api.post<ApiResponse<{ deleted: number }>>(`/datasets/${datasetId}/images/bulk-delete`, {
+      imageIds,
+    }),
 };
 
 // Annotations API

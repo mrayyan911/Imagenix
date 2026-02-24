@@ -16,6 +16,7 @@ import { CurrentUser, JwtPayload } from '../common/decorators/current-user.decor
 import { GetUploadUrlDto } from './dto/get-upload-url.dto';
 import { CommitImageDto } from './dto/commit-image.dto';
 import { ImageListQueryDto } from './dto/image-list-query.dto';
+import { BulkDeleteImagesDto } from './dto/bulk-delete-images.dto';
 
 @Controller()
 @UseGuards(JwtAuthGuard)
@@ -49,6 +50,16 @@ export class ImagesController {
     @Query() query: ImageListQueryDto
   ) {
     return this.imagesService.findAllByDataset(datasetId, user.sub, query);
+  }
+
+  @Post('datasets/:datasetId/images/bulk-delete')
+  @HttpCode(HttpStatus.OK)
+  async bulkDelete(
+    @Param('datasetId') datasetId: string,
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: BulkDeleteImagesDto
+  ) {
+    return this.imagesService.bulkDelete(datasetId, user.sub, dto.imageIds);
   }
 
   @Get('images/:id')

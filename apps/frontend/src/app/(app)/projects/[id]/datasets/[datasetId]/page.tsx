@@ -32,6 +32,7 @@ import {
   Wand2,
   CheckSquare,
   Square,
+  Trash2,
 } from 'lucide-react';
 
 export default function DatasetDetailPage() {
@@ -58,6 +59,8 @@ export default function DatasetDetailPage() {
   const [annotationStartTime, setAnnotationStartTime] = useState<number | null>(null);
   const [exportFormat, setExportFormat] = useState('coco');
   const [isExporting, setIsExporting] = useState(false);
+  const [isDeletingImages, setIsDeletingImages] = useState(false);
+  const [showDeleteImagesConfirm, setShowDeleteImagesConfirm] = useState(false);
 
   const loadData = useCallback(async () => {
     try {
@@ -176,6 +179,37 @@ export default function DatasetDetailPage() {
       setSelectedImageIds(new Set());
     } else {
       setSelectedImageIds(new Set(images.map((img) => img.id)));
+    }
+  };
+
+  const handleDeleteSelectedImages = async () => {
+    if (selectedImageIds.size === 0) {
+      return;
+    }
+
+    setIsDeletingImages(true);
+    try {
+      const response = await imagesApi.bulkDelete(datasetId, Array.from(selectedImageIds));
+      const deleted = response.data.data?.deleted || 0;
+
+      toast({
+        title: 'Success',
+        description: `Deleted ${deleted} image${deleted !== 1 ? 's' : ''}`,
+        variant: 'success',
+      });
+
+      setSelectedImageIds(new Set());
+      setShowDeleteImagesConfirm(false);
+      await loadData();
+      labelClassesManagerRef.current?.refresh();
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: error.response?.data?.error?.message || 'Failed to delete images',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsDeletingImages(false);
     }
   };
 
@@ -432,6 +466,45 @@ export default function DatasetDetailPage() {
                       <span className="text-sm text-neutral-500">
                         {selectedImageIds.size} of {images.length} selected
                       </span>
+                      {selectedImageIds.size > 0 && (
+                        <>
+                          {!showDeleteImagesConfirm ? (
+                            <button
+                              type="button"
+                              onClick={() => setShowDeleteImagesConfirm(true)}
+                              className="text-sm text-red-600 hover:text-red-800 font-medium flex items-center gap-1"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                              Delete
+                            </button>
+                          ) : (
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm text-red-600">Delete {selectedImageIds.size}?</span>
+                              <button
+                                type="button"
+                                onClick={() => setShowDeleteImagesConfirm(false)}
+                                className="text-sm text-neutral-600 hover:text-neutral-800 font-medium"
+                                disabled={isDeletingImages}
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                type="button"
+                                onClick={handleDeleteSelectedImages}
+                                className="text-sm text-red-600 hover:text-red-800 font-medium flex items-center gap-1"
+                                disabled={isDeletingImages}
+                              >
+                                {isDeletingImages ? (
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                ) : (
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                )}
+                                Confirm
+                              </button>
+                            </div>
+                          )}
+                        </>
+                      )}
                       <button
                         type="button"
                         onClick={toggleSelectAll}
