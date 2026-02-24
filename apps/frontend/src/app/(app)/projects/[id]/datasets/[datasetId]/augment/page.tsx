@@ -17,6 +17,7 @@ import {
   type Dataset,
   type Image,
   type AugmentationCapabilities,
+  type RandomTransform,
 } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
 import {
@@ -37,6 +38,9 @@ import {
   CheckCircle,
   Play,
   Eye,
+  Shuffle,
+  RefreshCw,
+  Zap,
 } from 'lucide-react';
 
 interface Transform {
@@ -44,6 +48,8 @@ interface Transform {
   value?: number;
   enabled: boolean;
 }
+
+type AugmentationMode = 'random' | 'classical' | 'generative';
 
 export default function AugmentationStudioPage() {
   const params = useParams();
@@ -62,10 +68,27 @@ export default function AugmentationStudioPage() {
   const [jobLabel, setJobLabel] = useState('');
   const [jobStartTime, setJobStartTime] = useState<number | null>(null);
 
+  // Augmentation mode
+  const [augmentationMode, setAugmentationMode] = useState<AugmentationMode>('random');
+
   // Classical augmentation settings
   const [transforms, setTransforms] = useState<Transform[]>([]);
   const [multiplier, setMultiplier] = useState(1);
   const [selectedImageIds, setSelectedImageIds] = useState<string[]>([]);
+
+  // Random augmentation settings
+  const [randomStrength, setRandomStrength] = useState<'low' | 'medium' | 'high'>('medium');
+  const [randomSeed, setRandomSeed] = useState('');
+  const [randomMultiplier, setRandomMultiplier] = useState(1);
+
+  // Random preview state
+  const [randomPreviewData, setRandomPreviewData] = useState<{
+    preview: string;
+    transforms: RandomTransform[];
+    seed: string;
+    validAnnotationCount: number;
+    invalidAnnotationCount: number;
+  } | null>(null);
 
   // Preview state
   const [previewImageId, setPreviewImageId] = useState<string | null>(null);
@@ -187,6 +210,88 @@ export default function AugmentationStudioPage() {
       });
     } finally {
       setIsPreviewing(false);
+    }
+  };
+
+  const handleRandomPreview = async (regenerate = false) => {
+    const imageId = previewImageId || images[0]?.id;
+    if (!imageId) {
+      toast({
+        title: 'No images',
+        description: 'Please upload images first',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setIsPreviewing(true);
+    try {
+      const seed = regenerate ? undefined : (randomSeed || undefined);
+      const response = await augmentationApi.previewRandom(imageId, {
+        strength: randomStrength,
+        seed,
+      });
+      const data = response.data.data;
+      if (data) {
+        setRandomPreviewData({
+          preview: data.preview,
+          transforms: data.transforms,
+          seed: data.seed,
+          validAnnotationCount: data.validAnnotationCount,
+          invalidAnnotationCount: data.invalidAnnotationCount,
+        });
+      }
+    } catch (error: any) {
+      toast({
+        title: 'Preview failed',
+        description: error.response?.data?.error?.message || 'Failed to generate preview',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsPreviewing(false);
+    }
+  };
+
+  const handleRunRandom = async (applyToAll = false) => {
+    setIsProcessing(true);
+    setJobProgress(0);
+    setJobStartTime(Date.now());
+    
+    const targetImageIds = applyToAll 
+      ? undefined 
+      : (selectedImageIds.length > 0 ? selectedImageIds : undefined);
+    const imgCount = applyToAll 
+      ? images.filter(img => !img.isSynthetic).length 
+      : (selectedImageIds.length > 0 ? selectedImageIds.length : images.filter(img => !img.isSynthetic).length);
+    const total = imgCount * randomMultiplier;
+    
+    setJobLabel(`0 of ${total} images generated`);
+    
+    try {
+      const response = await augmentationApi.createRandom(datasetId, {
+        strength: randomStrength,
+        seed: randomSeed || undefined,
+        multiplier: randomMultiplier,
+        imageIds: targetImageIds,
+      });
+
+      toast({
+        title: 'Random augmentation started',
+        description: `Processing ${imgCount} images with ${randomStrength} strength...`,
+      });
+
+      const jobId = response.data.data?.jobId;
+      if (jobId) {
+        pollJobStatus(jobId, total, 'generated');
+      }
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: error.response?.data?.error?.message || 'Failed to start random augmentation',
+        variant: 'destructive',
+      });
+      setIsProcessing(false);
+      setJobStartTime(null);
     }
   };
 
@@ -443,133 +548,350 @@ export default function AugmentationStudioPage() {
           ) : null;
         })()}
 
+        {/* Mode Selector Tabs */}
+        <div className="flex gap-2 mb-6">
+          <button
+            onClick={() => setAugmentationMode('random')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${
+              augmentationMode === 'random'
+                ? 'bg-primary-500 text-white'
+                : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'
+            }`}
+          >
+            <Shuffle className="h-4 w-4" />
+            Random Augmentation
+          </button>
+          <button
+            onClick={() => setAugmentationMode('classical')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${
+              augmentationMode === 'classical'
+                ? 'bg-primary-500 text-white'
+                : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'
+            }`}
+          >
+            <Wand2 className="h-4 w-4" />
+            Manual Transforms
+          </button>
+          <button
+            onClick={() => setAugmentationMode('generative')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${
+              augmentationMode === 'generative'
+                ? 'bg-primary-500 text-white'
+                : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'
+            }`}
+          >
+            <Sparkles className="h-4 w-4" />
+            AI Generative
+          </button>
+        </div>
+
         <div className="grid gap-6 lg:grid-cols-3">
-          {/* Classical Augmentation */}
           <div className="lg:col-span-2 space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Wand2 className="h-5 w-5" />
-                  Classical Augmentation
-                </CardTitle>
-                <CardDescription>
-                  Apply transformation-based augmentations to increase dataset diversity
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                {!capabilities?.classical.enabled ? (
-                  <div className="flex items-center gap-3 p-4 bg-yellow-50 text-yellow-800 rounded-lg">
-                    <AlertCircle className="h-5 w-5" />
-                    <p className="text-sm">
-                      Classical augmentation is disabled. Set FEATURE_AUGMENTATION=true in .env
-                    </p>
-                  </div>
-                ) : (
-                  <div className="space-y-6">
-                    {/* Transform Grid */}
-                    <div className="grid gap-4 grid-cols-1 md:grid-cols-2">
-                      {capabilities.classical.transforms.map((transform, index) => (
-                        <div
-                          key={transform.type}
-                          className={`p-4 rounded-lg border transition-colors ${
-                            transforms[index]?.enabled
-                              ? 'border-primary-500 bg-primary-50'
-                              : 'border-neutral-200 hover:border-neutral-300'
-                          }`}
+            {/* Random Augmentation Panel */}
+            {augmentationMode === 'random' && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Shuffle className="h-5 w-5" />
+                    Random Augmentation
+                    <span className="ml-2 px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded-full font-normal">
+                      Recommended
+                    </span>
+                  </CardTitle>
+                  <CardDescription>
+                    Automatically apply random combinations of transforms to each image for model training.
+                    Each image receives a unique set of augmentations.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {!capabilities?.random?.enabled ? (
+                    <div className="flex items-center gap-3 p-4 bg-yellow-50 text-yellow-800 rounded-lg">
+                      <AlertCircle className="h-5 w-5" />
+                      <p className="text-sm">
+                        Augmentation is disabled. Set FEATURE_AUGMENTATION=true in .env
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-6">
+                      {/* Strength Selector */}
+                      <div>
+                        <label className="text-sm font-medium mb-3 block">Augmentation Strength</label>
+                        <div className="grid grid-cols-3 gap-3">
+                          {(['low', 'medium', 'high'] as const).map((strength) => {
+                            const config = {
+                              low: { icon: Zap, desc: '1-2 light transforms', color: 'green' },
+                              medium: { icon: Zap, desc: '2-4 moderate transforms', color: 'yellow' },
+                              high: { icon: Zap, desc: '3-6 strong transforms', color: 'orange' },
+                            };
+                            const { desc, color } = config[strength];
+                            const isSelected = randomStrength === strength;
+                            return (
+                              <button
+                                key={strength}
+                                onClick={() => {
+                                  setRandomStrength(strength);
+                                  setRandomPreviewData(null);
+                                }}
+                                className={`p-4 rounded-lg border-2 transition-all text-left ${
+                                  isSelected
+                                    ? `border-${color}-500 bg-${color}-50`
+                                    : 'border-neutral-200 hover:border-neutral-300'
+                                }`}
+                              >
+                                <div className="font-medium capitalize mb-1">{strength}</div>
+                                <div className="text-xs text-neutral-500">{desc}</div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Seed Input */}
+                      <div>
+                        <label className="text-sm font-medium mb-2 block">
+                          Seed (optional)
+                          <span className="font-normal text-neutral-400 ml-2">
+                            For reproducible results
+                          </span>
+                        </label>
+                        <Input
+                          placeholder="Leave empty for random, or enter a seed like 'training-v1'"
+                          value={randomSeed}
+                          onChange={(e) => {
+                            setRandomSeed(e.target.value);
+                            setRandomPreviewData(null);
+                          }}
+                        />
+                      </div>
+
+                      {/* Multiplier */}
+                      <div className="p-4 bg-neutral-50 rounded-lg">
+                        <div className="flex items-center justify-between mb-2">
+                          <label className="font-medium">Copies per Image</label>
+                          <span className="text-sm text-neutral-500">
+                            Will create {(selectedImageIds.length || images.filter(i => !i.isSynthetic).length) * randomMultiplier} new images
+                          </span>
+                        </div>
+                        <Slider
+                          value={[randomMultiplier]}
+                          min={1}
+                          max={10}
+                          step={1}
+                          onValueChange={([v]) => setRandomMultiplier(v)}
+                        />
+                        <div className="flex justify-between text-xs text-neutral-400 mt-1">
+                          <span>1</span>
+                          <span>10</span>
+                        </div>
+                      </div>
+
+                      {/* Features */}
+                      <div className="p-4 bg-blue-50 rounded-lg">
+                        <div className="text-sm font-medium text-blue-900 mb-2">What this does:</div>
+                        <ul className="text-sm text-blue-800 space-y-1">
+                          <li className="flex items-center gap-2">
+                            <CheckCircle className="h-3.5 w-3.5" />
+                            Randomly selects transforms per image
+                          </li>
+                          <li className="flex items-center gap-2">
+                            <CheckCircle className="h-3.5 w-3.5" />
+                            Applies geometry, color, and quality augmentations
+                          </li>
+                          <li className="flex items-center gap-2">
+                            <CheckCircle className="h-3.5 w-3.5" />
+                            Creates new image copies (originals preserved)
+                          </li>
+                          <li className="flex items-center gap-2">
+                            <CheckCircle className="h-3.5 w-3.5" />
+                            Each image gets unique random transforms
+                          </li>
+                        </ul>
+                        <p className="text-xs text-blue-600 mt-2">
+                          Note: Augmented images are created without annotations. Add annotations manually if needed.
+                        </p>
+                      </div>
+
+                      {/* Actions */}
+                      <div className="flex flex-wrap gap-3">
+                        <Button
+                          variant="outline"
+                          onClick={() => handleRandomPreview(false)}
+                          disabled={isPreviewing || images.length === 0}
                         >
-                          <div className="flex items-center justify-between mb-3">
-                            <div className="flex items-center gap-2">
-                              {getTransformIcon(transform.type)}
-                              <span className="font-medium">{transform.name}</span>
-                            </div>
-                            <Switch
-                              checked={transforms[index]?.enabled || false}
-                              onCheckedChange={() => toggleTransform(index)}
-                            />
-                          </div>
-                          {transform.requiresValue && transforms[index]?.enabled && (
-                            <div className="space-y-2">
-                              <div className="flex justify-between text-sm">
-                                <span className="text-neutral-500">Value</span>
-                                <span className="font-mono">
-                                  {transforms[index]?.value?.toFixed(1)}
-                                </span>
+                          {isPreviewing ? (
+                            <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                          ) : (
+                            <Eye className="h-4 w-4 mr-2" />
+                          )}
+                          Preview
+                        </Button>
+                        {randomPreviewData && (
+                          <Button
+                            variant="outline"
+                            onClick={() => handleRandomPreview(true)}
+                            disabled={isPreviewing}
+                          >
+                            <RefreshCw className="h-4 w-4 mr-2" />
+                            Regenerate
+                          </Button>
+                        )}
+                        <Button
+                          onClick={() => handleRunRandom(false)}
+                          disabled={isProcessing || images.length === 0}
+                        >
+                          {isProcessing ? (
+                            <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                          ) : (
+                            <Play className="h-4 w-4 mr-2" />
+                          )}
+                          {selectedImageIds.length > 0 
+                            ? `Apply to ${selectedImageIds.length} Selected`
+                            : 'Apply to All Images'}
+                        </Button>
+                      </div>
+
+                      {/* Progress */}
+                      {isProcessing && jobProgress >= 0 && (
+                        <Progress
+                          value={jobProgress}
+                          label={jobLabel}
+                          estimatedTime={getEstimatedTime(jobProgress, jobStartTime)}
+                        />
+                      )}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Classical Augmentation */}
+            {augmentationMode === 'classical' && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Wand2 className="h-5 w-5" />
+                    Manual Transform Selection
+                  </CardTitle>
+                  <CardDescription>
+                    Manually select and configure specific transforms to apply
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {!capabilities?.classical.enabled ? (
+                    <div className="flex items-center gap-3 p-4 bg-yellow-50 text-yellow-800 rounded-lg">
+                      <AlertCircle className="h-5 w-5" />
+                      <p className="text-sm">
+                        Classical augmentation is disabled. Set FEATURE_AUGMENTATION=true in .env
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-6">
+                      {/* Transform Grid */}
+                      <div className="grid gap-4 grid-cols-1 md:grid-cols-2">
+                        {capabilities.classical.transforms.map((transform, index) => (
+                          <div
+                            key={transform.type}
+                            className={`p-4 rounded-lg border transition-colors ${
+                              transforms[index]?.enabled
+                                ? 'border-primary-500 bg-primary-50'
+                                : 'border-neutral-200 hover:border-neutral-300'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between mb-3">
+                              <div className="flex items-center gap-2">
+                                {getTransformIcon(transform.type)}
+                                <span className="font-medium">{transform.name}</span>
                               </div>
-                              <Slider
-                                value={[transforms[index]?.value || transform.valueRange!.default]}
-                                min={transform.valueRange!.min}
-                                max={transform.valueRange!.max}
-                                step={0.1}
-                                onValueChange={([v]) => updateTransformValue(index, v)}
+                              <Switch
+                                checked={transforms[index]?.enabled || false}
+                                onCheckedChange={() => toggleTransform(index)}
                               />
                             </div>
-                          )}
+                            {transform.requiresValue && transforms[index]?.enabled && (
+                              <div className="space-y-2">
+                                <div className="flex justify-between text-sm">
+                                  <span className="text-neutral-500">Value</span>
+                                  <span className="font-mono">
+                                    {transforms[index]?.value?.toFixed(1)}
+                                  </span>
+                                </div>
+                                <Slider
+                                  value={[transforms[index]?.value || transform.valueRange!.default]}
+                                  min={transform.valueRange!.min}
+                                  max={transform.valueRange!.max}
+                                  step={0.1}
+                                  onValueChange={([v]) => updateTransformValue(index, v)}
+                                />
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Multiplier */}
+                      <div className="p-4 bg-neutral-50 rounded-lg">
+                        <div className="flex items-center justify-between mb-2">
+                          <label className="font-medium">Copies per Image</label>
+                          <span className="text-sm text-neutral-500">
+                            Will create {estimatedOutputImages} new images
+                          </span>
                         </div>
-                      ))}
-                    </div>
-
-                    {/* Multiplier */}
-                    <div className="p-4 bg-neutral-50 rounded-lg">
-                      <div className="flex items-center justify-between mb-2">
-                        <label className="font-medium">Copies per Image</label>
-                        <span className="text-sm text-neutral-500">
-                          Will create {estimatedOutputImages} new images
-                        </span>
+                        <Slider
+                          value={[multiplier]}
+                          min={1}
+                          max={10}
+                          step={1}
+                          onValueChange={([v]) => setMultiplier(v)}
+                        />
+                        <div className="flex justify-between text-xs text-neutral-400 mt-1">
+                          <span>1</span>
+                          <span>10</span>
+                        </div>
                       </div>
-                      <Slider
-                        value={[multiplier]}
-                        min={1}
-                        max={10}
-                        step={1}
-                        onValueChange={([v]) => setMultiplier(v)}
-                      />
-                      <div className="flex justify-between text-xs text-neutral-400 mt-1">
-                        <span>1</span>
-                        <span>10</span>
+
+                      {/* Actions */}
+                      <div className="flex gap-3">
+                        <Button
+                          variant="outline"
+                          onClick={handlePreview}
+                          disabled={enabledCount === 0 || isPreviewing || images.length === 0}
+                        >
+                          {isPreviewing ? (
+                            <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                          ) : (
+                            <Eye className="h-4 w-4 mr-2" />
+                          )}
+                          Preview
+                        </Button>
+                        <Button
+                          onClick={handleRunClassical}
+                          disabled={enabledCount === 0 || isProcessing || images.length === 0}
+                        >
+                          {isProcessing ? (
+                            <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                          ) : (
+                            <Play className="h-4 w-4 mr-2" />
+                          )}
+                          Run Augmentation ({enabledCount} transforms)
+                        </Button>
                       </div>
-                    </div>
 
-                    {/* Actions */}
-                    <div className="flex gap-3">
-                      <Button
-                        variant="outline"
-                        onClick={handlePreview}
-                        disabled={enabledCount === 0 || isPreviewing || images.length === 0}
-                      >
-                        {isPreviewing ? (
-                          <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                        ) : (
-                          <Eye className="h-4 w-4 mr-2" />
-                        )}
-                        Preview
-                      </Button>
-                      <Button
-                        onClick={handleRunClassical}
-                        disabled={enabledCount === 0 || isProcessing || images.length === 0}
-                      >
-                        {isProcessing ? (
-                          <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                        ) : (
-                          <Play className="h-4 w-4 mr-2" />
-                        )}
-                        Run Augmentation ({enabledCount} transforms)
-                      </Button>
+                      {/* Progress bar for classical augmentation */}
+                      {isProcessing && jobProgress >= 0 && (
+                        <Progress
+                          value={jobProgress}
+                          label={jobLabel}
+                          estimatedTime={getEstimatedTime(jobProgress, jobStartTime)}
+                        />
+                      )}
                     </div>
-
-                    {/* Progress bar for classical augmentation */}
-                    {isProcessing && jobProgress >= 0 && (
-                      <Progress
-                        value={jobProgress}
-                        label={jobLabel}
-                        estimatedTime={getEstimatedTime(jobProgress, jobStartTime)}
-                      />
-                    )}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+                  )}
+                </CardContent>
+              </Card>
+            )}
 
             {/* Generative Augmentation */}
+            {augmentationMode === 'generative' && (
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -664,6 +986,7 @@ export default function AugmentationStudioPage() {
                 )}
               </CardContent>
             </Card>
+            )}
           </div>
 
           {/* Preview Panel */}
@@ -691,6 +1014,7 @@ export default function AugmentationStudioPage() {
                         onChange={(e) => {
                           setPreviewImageId(e.target.value);
                           setPreviewData(null);
+                          setRandomPreviewData(null);
                         }}
                       >
                         {images.map((img) => (
@@ -703,7 +1027,13 @@ export default function AugmentationStudioPage() {
 
                     {/* Preview Image */}
                     <div className="aspect-square bg-neutral-100 rounded-lg overflow-hidden relative">
-                      {previewData ? (
+                      {augmentationMode === 'random' && randomPreviewData ? (
+                        <img
+                          src={`data:image/jpeg;base64,${randomPreviewData.preview}`}
+                          alt="Preview"
+                          className="w-full h-full object-contain"
+                        />
+                      ) : previewData ? (
                         <img
                           src={`data:image/jpeg;base64,${previewData.preview}`}
                           alt="Preview"
@@ -723,8 +1053,31 @@ export default function AugmentationStudioPage() {
                       )}
                     </div>
 
-                    {/* Annotation Status */}
-                    {previewData && (
+                    {/* Random Augmentation Preview Info */}
+                    {augmentationMode === 'random' && randomPreviewData && (
+                      <div className="mt-4 space-y-3">
+                        <div className="text-sm">
+                          <div className="font-medium mb-2">Applied Transforms:</div>
+                          <div className="flex flex-wrap gap-1">
+                            {randomPreviewData.transforms.map((t, i) => (
+                              <span
+                                key={i}
+                                className="px-2 py-0.5 bg-neutral-100 text-neutral-700 rounded text-xs"
+                              >
+                                {t.type}
+                                {t.value !== undefined && `: ${typeof t.value === 'number' ? t.value.toFixed(2) : t.value}`}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="text-xs text-neutral-500">
+                          Seed: <code className="bg-neutral-100 px-1 rounded">{randomPreviewData.seed}</code>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Classical Annotation Status */}
+                    {augmentationMode !== 'random' && previewData && (
                       <div className="mt-4 space-y-2">
                         <div className="flex items-center gap-2 text-sm">
                           <CheckCircle className="h-4 w-4 text-green-500" />
@@ -753,21 +1106,43 @@ export default function AugmentationStudioPage() {
               <CardContent className="space-y-3">
                 <div className="flex justify-between text-sm">
                   <span className="text-neutral-500">Source Images</span>
-                  <span className="font-medium">{images.length}</span>
+                  <span className="font-medium">{images.filter(i => !i.isSynthetic).length}</span>
                 </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-neutral-500">Active Transforms</span>
-                  <span className="font-medium">{enabledCount}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-neutral-500">Multiplier</span>
-                  <span className="font-medium">×{multiplier}</span>
-                </div>
-                <hr />
-                <div className="flex justify-between text-sm font-medium">
-                  <span>Output Images</span>
-                  <span className="text-primary-600">{estimatedOutputImages}</span>
-                </div>
+                {augmentationMode === 'random' ? (
+                  <>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-neutral-500">Strength</span>
+                      <span className="font-medium capitalize">{randomStrength}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-neutral-500">Multiplier</span>
+                      <span className="font-medium">×{randomMultiplier}</span>
+                    </div>
+                    <hr />
+                    <div className="flex justify-between text-sm font-medium">
+                      <span>Output Images</span>
+                      <span className="text-primary-600">
+                        {(selectedImageIds.length || images.filter(i => !i.isSynthetic).length) * randomMultiplier}
+                      </span>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-neutral-500">Active Transforms</span>
+                      <span className="font-medium">{enabledCount}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-neutral-500">Multiplier</span>
+                      <span className="font-medium">×{multiplier}</span>
+                    </div>
+                    <hr />
+                    <div className="flex justify-between text-sm font-medium">
+                      <span>Output Images</span>
+                      <span className="text-primary-600">{estimatedOutputImages}</span>
+                    </div>
+                  </>
+                )}
               </CardContent>
             </Card>
           </div>

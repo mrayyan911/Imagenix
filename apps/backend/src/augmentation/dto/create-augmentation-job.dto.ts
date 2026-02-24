@@ -8,7 +8,7 @@ export class ClassicalTransformDto {
 
   @IsOptional()
   @IsNumber()
-  value?: number; // e.g., rotation degrees, brightness factor
+  value?: number;
 }
 
 export class CreateClassicalAugmentationDto {
@@ -21,16 +21,16 @@ export class CreateClassicalAugmentationDto {
   @IsNumber()
   @Min(1)
   @Max(10)
-  multiplier?: number; // How many augmented copies per image (default: 1)
+  multiplier?: number;
 
   @IsOptional()
   @IsArray()
   @IsString({ each: true })
-  imageIds?: string[]; // Specific images, or all if not provided
+  imageIds?: string[];
 
   @IsOptional()
   @IsBoolean()
-  preserveOriginals?: boolean; // Keep original images (default: true)
+  preserveOriginals?: boolean;
 }
 
 export class CreateGenerativeAugmentationDto {
@@ -40,16 +40,51 @@ export class CreateGenerativeAugmentationDto {
 
   @IsOptional()
   @IsString()
-  prompt?: string; // Additional prompt for generation
+  prompt?: string;
 
   @IsOptional()
   @IsNumber()
   @Min(1)
   @Max(5)
-  quantity?: number; // Images to generate per source (default: 1)
+  quantity?: number;
 
   @IsOptional()
   @IsArray()
   @IsString({ each: true })
-  imageIds?: string[]; // Source images
+  imageIds?: string[];
+}
+
+export class CreateRandomAugmentationDto {
+  @IsString()
+  @IsIn(['low', 'medium', 'high'])
+  strength: 'low' | 'medium' | 'high';
+
+  @IsOptional()
+  @IsString()
+  seed?: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  @Max(10)
+  multiplier?: number;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  imageIds?: string[];
+
+  @IsOptional()
+  @IsBoolean()
+  preserveOriginals?: boolean;
+}
+
+export class PreviewRandomAugmentationDto {
+  @IsString()
+  @IsIn(['low', 'medium', 'high'])
+  strength: 'low' | 'medium' | 'high';
+
+  @IsOptional()
+  @IsString()
+  seed?: string;
 }

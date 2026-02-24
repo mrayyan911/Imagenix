@@ -274,6 +274,21 @@ export const augmentationApi = {
       }>
     >(`/datasets/${datasetId}/augmentation/generative`, data),
 
+  createRandom: (
+    datasetId: string,
+    data: {
+      strength: 'low' | 'medium' | 'high';
+      seed?: string;
+      multiplier?: number;
+      imageIds?: string[];
+      preserveOriginals?: boolean;
+    }
+  ) =>
+    api.post<ApiResponse<{ jobId: string; status: string }>>(
+      `/datasets/${datasetId}/augmentation/random`,
+      data
+    ),
+
   preview: (
     imageId: string,
     transforms: { type: string; value?: number }[]
@@ -290,6 +305,25 @@ export const augmentationApi = {
         invalidAnnotationCount: number;
       }>
     >(`/images/${imageId}/augmentation/preview`, { transforms }),
+
+  previewRandom: (
+    imageId: string,
+    data: { strength: 'low' | 'medium' | 'high'; seed?: string }
+  ) =>
+    api.post<
+      ApiResponse<{
+        preview: string;
+        previewWidth: number;
+        previewHeight: number;
+        originalWidth: number;
+        originalHeight: number;
+        transforms: RandomTransform[];
+        seed: string;
+        annotations: TransformedAnnotationWithClass[];
+        validAnnotationCount: number;
+        invalidAnnotationCount: number;
+      }>
+    >(`/images/${imageId}/augmentation/random/preview`, data),
 };
 
 export interface AugmentationCapabilities {
@@ -307,6 +341,15 @@ export interface AugmentationCapabilities {
     available: boolean;
     variations: string[];
   };
+  random: {
+    enabled: boolean;
+    strengths: {
+      value: string;
+      name: string;
+      description: string;
+    }[];
+    features: string[];
+  };
 }
 
 export interface TransformedAnnotation {
@@ -317,6 +360,17 @@ export interface TransformedAnnotation {
   width: number;
   height: number;
   isValid: boolean;
+}
+
+export interface TransformedAnnotationWithClass extends TransformedAnnotation {
+  visibleArea: number;
+  labelClass?: LabelClass;
+}
+
+export interface RandomTransform {
+  type: string;
+  value?: number;
+  params?: Record<string, number>;
 }
 
 // Types
