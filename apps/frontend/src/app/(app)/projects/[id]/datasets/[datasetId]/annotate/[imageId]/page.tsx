@@ -41,6 +41,10 @@ const PRESET_COLORS = [
   '#6366F1', // Indigo
 ];
 
+type ResizeHandle = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w' | null;
+
+const HANDLE_SIZE = 8;
+
 export default function AnnotatePage() {
   const params = useParams();
   const router = useRouter();
@@ -85,6 +89,13 @@ export default function AnnotatePage() {
   const [newLabelColor, setNewLabelColor] = useState(PRESET_COLORS[0]);
   const [isCreatingLabel, setIsCreatingLabel] = useState(false);
   const [labelError, setLabelError] = useState<string | null>(null);
+
+  // Resize state
+  const [isResizing, setIsResizing] = useState(false);
+  const [resizeHandle, setResizeHandle] = useState<ResizeHandle>(null);
+  const [resizeStart, setResizeStart] = useState<{ x: number; y: number } | null>(null);
+  const [originalBox, setOriginalBox] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
+  const [hoveredHandle, setHoveredHandle] = useState<ResizeHandle>(null);
 
   // Load image and annotations
   useEffect(() => {
@@ -186,6 +197,29 @@ export default function AnnotatePage() {
       if (isSelected) {
         ctx.fillStyle = color + '20';
         ctx.fillRect(ann.x, ann.y, ann.width, ann.height);
+
+        // Draw resize handles for selected annotation
+        const handleSize = HANDLE_SIZE / scale;
+        const halfHandle = handleSize / 2;
+
+        const handles = [
+          { x: ann.x, y: ann.y }, // nw
+          { x: ann.x + ann.width / 2, y: ann.y }, // n
+          { x: ann.x + ann.width, y: ann.y }, // ne
+          { x: ann.x + ann.width, y: ann.y + ann.height / 2 }, // e
+          { x: ann.x + ann.width, y: ann.y + ann.height }, // se
+          { x: ann.x + ann.width / 2, y: ann.y + ann.height }, // s
+          { x: ann.x, y: ann.y + ann.height }, // sw
+          { x: ann.x, y: ann.y + ann.height / 2 }, // w
+        ];
+
+        handles.forEach((h) => {
+          ctx.fillStyle = 'white';
+          ctx.fillRect(h.x - halfHandle, h.y - halfHandle, handleSize, handleSize);
+          ctx.strokeStyle = color;
+          ctx.lineWidth = 1.5 / scale;
+          ctx.strokeRect(h.x - halfHandle, h.y - halfHandle, handleSize, handleSize);
+        });
       }
 
       // Draw label
@@ -213,7 +247,7 @@ export default function AnnotatePage() {
     }
 
     ctx.restore();
-  }, [loadedImage, annotations, drawingBox, scale, offset, selectedAnnotationId, labelClasses, selectedLabelClassId]);
+  }, [loadedImage, annotations, drawingBox, scale, offset, selectedAnnotationId, labelClasses, selectedLabelClassId, isResizing]);
 
   // Convert screen coordinates to image coordinates
   const screenToImage = (screenX: number, screenY: number) => {
@@ -225,8 +259,81 @@ export default function AnnotatePage() {
     };
   };
 
-  // Mouse handlers for drawing
+  // Get resize handle at position for a given annotation
+  const getResizeHandleAtPosition = (pos: { x: number; y: number }, ann: Annotation): ResizeHandle => {
+    const handleSize = HANDLE_SIZE / scale;
+    const halfHandle = handleSize / 2;
+
+    const handles: { handle: ResizeHandle; x: number; y: number }[] = [
+      { handle: 'nw', x: ann.x, y: ann.y },
+      { handle: 'n', x: ann.x + ann.width / 2, y: ann.y },
+      { handle: 'ne', x: ann.x + ann.width, y: ann.y },
+      { handle: 'e', x: ann.x + ann.width, y: ann.y + ann.height / 2 },
+      { handle: 'se', x: ann.x + ann.width, y: ann.y + ann.height },
+      { handle: 's', x: ann.x + ann.width / 2, y: ann.y + ann.height },
+      { handle: 'sw', x: ann.x, y: ann.y + ann.height },
+      { handle: 'w', x: ann.x, y: ann.y + ann.height / 2 },
+    ];
+
+    for (const h of handles) {
+      if (
+        pos.x >= h.x - halfHandle &&
+        pos.x <= h.x + halfHandle &&
+        pos.y >= h.y - halfHandle &&
+        pos.y <= h.y + halfHandle
+      ) {
+        return h.handle;
+      }
+    }
+
+    return null;
+  };
+
+  // Get cursor style based on handle
+  const getCursorForHandle = (handle: ResizeHandle): string => {
+    switch (handle) {
+      case 'nw':
+      case 'se':
+        return 'nwse-resize';
+      case 'ne':
+      case 'sw':
+        return 'nesw-resize';
+      case 'n':
+      case 's':
+        return 'ns-resize';
+      case 'e':
+      case 'w':
+        return 'ew-resize';
+      default:
+        return 'crosshair';
+    }
+  };
+
+  // Mouse handlers for drawing and resizing
   const handleMouseDown = (e: React.MouseEvent) => {
+    const pos = screenToImage(e.clientX, e.clientY);
+
+    // Check if clicking on a resize handle of selected annotation
+    if (selectedAnnotationId) {
+      const selectedAnn = annotations.find((a) => a.id === selectedAnnotationId);
+      if (selectedAnn) {
+        const handle = getResizeHandleAtPosition(pos, selectedAnn);
+        if (handle) {
+          setIsResizing(true);
+          setResizeHandle(handle);
+          setResizeStart(pos);
+          setOriginalBox({
+            x: selectedAnn.x,
+            y: selectedAnn.y,
+            width: selectedAnn.width,
+            height: selectedAnn.height,
+          });
+          return;
+        }
+      }
+    }
+
+    // Otherwise, start drawing a new annotation
     if (!selectedLabelClassId) {
       toast({
         title: 'Select a label class',
@@ -236,24 +343,147 @@ export default function AnnotatePage() {
       return;
     }
 
-    const pos = screenToImage(e.clientX, e.clientY);
     setDrawStart(pos);
     setIsDrawing(true);
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
-    if (!isDrawing || !drawStart) return;
-
     const pos = screenToImage(e.clientX, e.clientY);
-    setDrawingBox({
-      x: Math.min(drawStart.x, pos.x),
-      y: Math.min(drawStart.y, pos.y),
-      width: Math.abs(pos.x - drawStart.x),
-      height: Math.abs(pos.y - drawStart.y),
-    });
+
+    // Handle resizing
+    if (isResizing && resizeHandle && resizeStart && originalBox && selectedAnnotationId) {
+      const deltaX = pos.x - resizeStart.x;
+      const deltaY = pos.y - resizeStart.y;
+
+      let newX = originalBox.x;
+      let newY = originalBox.y;
+      let newWidth = originalBox.width;
+      let newHeight = originalBox.height;
+
+      // Apply resize based on handle
+      switch (resizeHandle) {
+        case 'nw':
+          newX = originalBox.x + deltaX;
+          newY = originalBox.y + deltaY;
+          newWidth = originalBox.width - deltaX;
+          newHeight = originalBox.height - deltaY;
+          break;
+        case 'n':
+          newY = originalBox.y + deltaY;
+          newHeight = originalBox.height - deltaY;
+          break;
+        case 'ne':
+          newY = originalBox.y + deltaY;
+          newWidth = originalBox.width + deltaX;
+          newHeight = originalBox.height - deltaY;
+          break;
+        case 'e':
+          newWidth = originalBox.width + deltaX;
+          break;
+        case 'se':
+          newWidth = originalBox.width + deltaX;
+          newHeight = originalBox.height + deltaY;
+          break;
+        case 's':
+          newHeight = originalBox.height + deltaY;
+          break;
+        case 'sw':
+          newX = originalBox.x + deltaX;
+          newWidth = originalBox.width - deltaX;
+          newHeight = originalBox.height + deltaY;
+          break;
+        case 'w':
+          newX = originalBox.x + deltaX;
+          newWidth = originalBox.width - deltaX;
+          break;
+      }
+
+      // Ensure minimum size
+      if (newWidth < 10) {
+        if (resizeHandle.includes('w')) {
+          newX = originalBox.x + originalBox.width - 10;
+        }
+        newWidth = 10;
+      }
+      if (newHeight < 10) {
+        if (resizeHandle.includes('n')) {
+          newY = originalBox.y + originalBox.height - 10;
+        }
+        newHeight = 10;
+      }
+
+      // Clamp to image bounds
+      if (currentImage) {
+        newX = Math.max(0, Math.min(newX, currentImage.width - newWidth));
+        newY = Math.max(0, Math.min(newY, currentImage.height - newHeight));
+        newWidth = Math.min(newWidth, currentImage.width - newX);
+        newHeight = Math.min(newHeight, currentImage.height - newY);
+      }
+
+      // Update annotation locally for visual feedback
+      updateAnnotation(selectedAnnotationId, {
+        x: Math.round(newX),
+        y: Math.round(newY),
+        width: Math.round(newWidth),
+        height: Math.round(newHeight),
+      });
+      return;
+    }
+
+    // Handle drawing
+    if (isDrawing && drawStart) {
+      setDrawingBox({
+        x: Math.min(drawStart.x, pos.x),
+        y: Math.min(drawStart.y, pos.y),
+        width: Math.abs(pos.x - drawStart.x),
+        height: Math.abs(pos.y - drawStart.y),
+      });
+      return;
+    }
+
+    // Check for hover over resize handles
+    if (selectedAnnotationId && !isDrawing && !isResizing) {
+      const selectedAnn = annotations.find((a) => a.id === selectedAnnotationId);
+      if (selectedAnn) {
+        const handle = getResizeHandleAtPosition(pos, selectedAnn);
+        setHoveredHandle(handle);
+      }
+    }
   };
 
   const handleMouseUp = async () => {
+    // Handle resize completion
+    if (isResizing && selectedAnnotationId) {
+      const selectedAnn = annotations.find((a) => a.id === selectedAnnotationId);
+      if (selectedAnn) {
+        try {
+          await annotationsApi.update(selectedAnnotationId, {
+            x: selectedAnn.x,
+            y: selectedAnn.y,
+            width: selectedAnn.width,
+            height: selectedAnn.height,
+          });
+        } catch (error) {
+          // Revert to original if save fails
+          if (originalBox) {
+            updateAnnotation(selectedAnnotationId, originalBox);
+          }
+          toast({
+            title: 'Error',
+            description: 'Failed to update annotation',
+            variant: 'destructive',
+          });
+        }
+      }
+
+      setIsResizing(false);
+      setResizeHandle(null);
+      setResizeStart(null);
+      setOriginalBox(null);
+      return;
+    }
+
+    // Handle drawing completion
     if (!isDrawing || !drawingBox || !selectedLabelClassId || !currentImage) {
       setIsDrawing(false);
       setDrawStart(null);
@@ -475,11 +705,14 @@ export default function AnnotatePage() {
         >
           <canvas
             ref={canvasRef}
-            className="cursor-crosshair"
+            style={{ cursor: isResizing ? getCursorForHandle(resizeHandle) : getCursorForHandle(hoveredHandle) }}
             onMouseDown={handleMouseDown}
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}
-            onMouseLeave={handleMouseUp}
+            onMouseLeave={() => {
+              handleMouseUp();
+              setHoveredHandle(null);
+            }}
             onClick={handleClick}
           />
         </div>
