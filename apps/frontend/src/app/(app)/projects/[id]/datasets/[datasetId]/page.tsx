@@ -34,6 +34,7 @@ import {
   Square,
   Trash2,
 } from 'lucide-react';
+import { useDatasetStore } from '@/stores/dataset-store';
 
 export default function DatasetDetailPage() {
   const params = useParams();
@@ -44,6 +45,21 @@ export default function DatasetDetailPage() {
 
   const labelClassesManagerRef = useRef<LabelClassesManagerRef>(null);
 
+  // Use global store for selected images and job state (persists across navigation)
+  const {
+    getSelectedImages,
+    toggleImage,
+    selectAll,
+    deselectAll,
+    getJob,
+    startJob,
+    startPolling,
+    clearJob,
+  } = useDatasetStore();
+
+  const selectedImageIds = getSelectedImages(datasetId);
+  const activeJob = getJob(datasetId);
+
   const [dataset, setDataset] = useState<Dataset | null>(null);
   const [images, setImages] = useState<Image[]>([]);
   const [labelClasses, setLabelClasses] = useState<LabelClass[]>([]);
@@ -51,16 +67,17 @@ export default function DatasetDetailPage() {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [autoAnnotateClass, setAutoAnnotateClass] = useState('');
-  const [isAutoAnnotating, setIsAutoAnnotating] = useState(false);
-  const [selectedImageIds, setSelectedImageIds] = useState<Set<string>>(new Set());
-  const [annotationJobId, setAnnotationJobId] = useState<string | null>(null);
-  const [annotationProgress, setAnnotationProgress] = useState(0);
-  const [annotationImagesTotal, setAnnotationImagesTotal] = useState(0);
-  const [annotationStartTime, setAnnotationStartTime] = useState<number | null>(null);
   const [exportFormat, setExportFormat] = useState('coco');
   const [isExporting, setIsExporting] = useState(false);
   const [isDeletingImages, setIsDeletingImages] = useState(false);
   const [showDeleteImagesConfirm, setShowDeleteImagesConfirm] = useState(false);
+
+  // Derived state from active job
+  const isAutoAnnotating = activeJob?.jobType === 'auto-annotation' && 
+    (activeJob.status === 'queued' || activeJob.status === 'running');
+  const annotationProgress = activeJob?.progress || 0;
+  const annotationImagesTotal = activeJob?.totalImages || 0;
+  const annotationStartTime = activeJob?.startTime || null;
 
   const loadData = useCallback(async () => {
     try {
@@ -86,6 +103,32 @@ export default function DatasetDetailPage() {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  // Resume polling if there's an active job (e.g., user navigated away and came back)
+  useEffect(() => {
+    if (activeJob?.jobId && (activeJob.status === 'queued' || activeJob.status === 'running')) {
+      startPolling(datasetId, activeJob.jobId, () => {
+        toast({
+          title: 'Auto-annotation complete',
+          description: 'Images have been annotated.',
+          variant: 'success',
+        });
+        loadData();
+        labelClassesManagerRef.current?.refresh();
+      });
+    }
+  }, [datasetId]); // Only run on mount/datasetId change
+
+  // Show toast when job fails
+  useEffect(() => {
+    if (activeJob?.status === 'failed') {
+      toast({
+        title: 'Auto-annotation failed',
+        description: activeJob.errorMessage || 'Unknown error',
+        variant: 'destructive',
+      });
+    }
+  }, [activeJob?.status, activeJob?.errorMessage, toast]);
 
   const uploadFile = async (file: File) => {
     // Get upload URL
@@ -163,22 +206,14 @@ export default function DatasetDetailPage() {
   });
 
   const toggleImageSelection = (imageId: string) => {
-    setSelectedImageIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(imageId)) {
-        next.delete(imageId);
-      } else {
-        next.add(imageId);
-      }
-      return next;
-    });
+    toggleImage(datasetId, imageId);
   };
 
   const toggleSelectAll = () => {
     if (selectedImageIds.size === images.length) {
-      setSelectedImageIds(new Set());
+      deselectAll(datasetId);
     } else {
-      setSelectedImageIds(new Set(images.map((img) => img.id)));
+      selectAll(datasetId, images.map((img) => img.id));
     }
   };
 
@@ -198,7 +233,7 @@ export default function DatasetDetailPage() {
         variant: 'success',
       });
 
-      setSelectedImageIds(new Set());
+      deselectAll(datasetId);
       setShowDeleteImagesConfirm(false);
       await loadData();
       labelClassesManagerRef.current?.refresh();
@@ -232,10 +267,6 @@ export default function DatasetDetailPage() {
       return;
     }
 
-    setIsAutoAnnotating(true);
-    setAnnotationProgress(0);
-    setAnnotationImagesTotal(selectedImageIds.size);
-    setAnnotationStartTime(Date.now());
     try {
       const response = await jobsApi.createAutoAnnotation(datasetId, {
         className: autoAnnotateClass,
@@ -248,11 +279,19 @@ export default function DatasetDetailPage() {
         description: `Processing ${selectedImageIds.size} images...`,
       });
 
-      // Poll for job completion
       const jobId = response.data.data?.jobId;
       if (jobId) {
-        setAnnotationJobId(jobId);
-        pollJobStatus(jobId);
+        // Start job in global store (persists across navigation)
+        startJob(datasetId, jobId, 'auto-annotation', selectedImageIds.size);
+        startPolling(datasetId, jobId, () => {
+          toast({
+            title: 'Auto-annotation complete',
+            description: 'Images have been annotated.',
+            variant: 'success',
+          });
+          loadData();
+          labelClassesManagerRef.current?.refresh();
+        });
       }
     } catch (error) {
       toast({
@@ -260,9 +299,6 @@ export default function DatasetDetailPage() {
         description: 'Failed to start auto-annotation',
         variant: 'destructive',
       });
-      setIsAutoAnnotating(false);
-      setAnnotationJobId(null);
-      setAnnotationStartTime(null);
     }
   };
 
@@ -273,53 +309,6 @@ export default function DatasetDetailPage() {
     const remaining = Math.max(0, Math.ceil(total - elapsed));
     if (remaining < 60) return `~${remaining}s remaining`;
     return `~${Math.ceil(remaining / 60)}min remaining`;
-  };
-
-  const pollJobStatus = async (jobId: string) => {
-    const poll = async () => {
-      try {
-        const response = await jobsApi.getStatus(jobId);
-        const job = response.data.data;
-
-        if (job?.progress != null) {
-          setAnnotationProgress(job.progress);
-        }
-
-        if (job?.status === 'succeeded') {
-          setAnnotationProgress(100);
-          toast({
-            title: 'Auto-annotation complete',
-            description: 'Images have been annotated.',
-            variant: 'success',
-          });
-          // Reset after a short delay so user sees 100%
-          setTimeout(() => {
-            setIsAutoAnnotating(false);
-            setAnnotationJobId(null);
-            setAnnotationStartTime(null);
-            setAnnotationProgress(0);
-          }, 2000);
-          loadData();
-          labelClassesManagerRef.current?.refresh();
-        } else if (job?.status === 'failed') {
-          toast({
-            title: 'Auto-annotation failed',
-            description: job.errorMessage || 'Unknown error',
-            variant: 'destructive',
-          });
-          setIsAutoAnnotating(false);
-          setAnnotationJobId(null);
-          setAnnotationStartTime(null);
-          setAnnotationProgress(0);
-        } else if (job?.status === 'running' || job?.status === 'queued') {
-          setTimeout(poll, 2000);
-        }
-      } catch {
-        setTimeout(poll, 3000);
-      }
-    };
-
-    poll();
   };
 
   const handleExport = async () => {

@@ -397,6 +397,11 @@ export class RandomAugmentationService {
       }
     }
 
+    // Final encode as JPEG for smaller file size and faster I/O
+    currentBuffer = await sharp(currentBuffer)
+      .jpeg({ quality: 92, mozjpeg: true })
+      .toBuffer();
+
     const sha256 = crypto.createHash('sha256').update(currentBuffer).digest('hex');
 
     return {

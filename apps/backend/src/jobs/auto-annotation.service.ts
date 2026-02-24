@@ -158,26 +158,23 @@ export class AutoAnnotationService {
     for (let i = 0; i < images.length; i++) {
       const image = images[i];
 
-      // Check if job was canceled
-      const job = await this.prisma.job.findUnique({
-        where: { id: jobId },
-        select: { status: true },
-      });
-
-      if (job?.status === 'canceled') {
-        this.logger.log(`[AutoAnnotation] Job ${jobId} was canceled`);
-        return;
+      // Check if job was canceled (every 5 images to reduce DB calls)
+      if (i % 5 === 0) {
+        const job = await this.prisma.job.findUnique({
+          where: { id: jobId },
+          select: { status: true },
+        });
+        if (job?.status === 'canceled') {
+          this.logger.log(`[AutoAnnotation] Job ${jobId} was canceled`);
+          return;
+        }
       }
 
-      // Update progress BEFORE processing (shows "starting image N")
-      const progressBefore = Math.round((i / images.length) * 100);
-      await this.redisService.setJobProgress(jobId, progressBefore);
-
       try {
-        // Download image from storage as buffer (Replicate can't access localhost MinIO)
+        // Download image from storage
         const imageBuffer = await this.storageService.downloadFile(image.fileKey);
 
-        // Run Grounding DINO detection (pass buffer — SDK auto-uploads to Replicate)
+        // Run Grounding DINO detection
         const detections = await this.detectObjects(
           imageBuffer,
           className,
@@ -190,10 +187,10 @@ export class AutoAnnotationService {
           `[AutoAnnotation] Image ${i + 1}/${images.length}: ${detections.length} detections`,
         );
 
-        // Create annotations for each detection
-        for (const detection of detections) {
-          await this.prisma.annotation.create({
-            data: {
+        // Batch insert all annotations for this image (faster than individual inserts)
+        if (detections.length > 0) {
+          await this.prisma.annotation.createMany({
+            data: detections.map((detection) => ({
               imageId: image.id,
               labelClassId: labelClass.id,
               x: detection.x,
@@ -203,19 +200,18 @@ export class AutoAnnotationService {
               source: 'auto',
               status: 'draft',
               confidence: detection.confidence,
-            },
+            })),
           });
-          totalAnnotations++;
+          totalAnnotations += detections.length;
         }
 
-        // Update progress AFTER processing (shows actual completion)
-        const progressAfter = Math.round(((i + 1) / images.length) * 100);
-        await this.redisService.setJobProgress(jobId, progressAfter);
+        // Update progress
+        const progress = Math.round(((i + 1) / images.length) * 100);
+        await this.redisService.setJobProgress(jobId, progress);
       } catch (err) {
         this.logger.error(
           `[AutoAnnotation] Failed on image ${image.id}: ${err instanceof Error ? err.message : err}`,
         );
-        // Continue with next image rather than failing the entire job
       }
     }
 

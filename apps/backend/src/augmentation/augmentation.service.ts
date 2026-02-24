@@ -407,20 +407,22 @@ export class AugmentationService {
 
       const images = await this.prisma.image.findMany({
         where: whereClause,
-        include: {
-          annotations: true,
-        },
+        include: { annotations: true },
       });
 
       const totalOperations = images.length * metadata.multiplier;
       let completed = 0;
+      let lastReportedProgress = -1;
 
-      for (const image of images) {
-        // Download original image
+      const CONCURRENCY = 3;
+
+      const processImage = async (image: typeof images[0]) => {
         const imageBuffer = await this.storageService.downloadFile(image.fileKey);
 
-        for (let i = 0; i < metadata.multiplier; i++) {
-          // Apply augmentation
+        const variants = Array.from({ length: metadata.multiplier }, (_, i) => i);
+
+        // Process all multiplier variants for this image in parallel
+        await Promise.all(variants.map(async (i) => {
           const result = await this.classicalAugmentation.augmentImage(
             imageBuffer,
             metadata.transforms,
@@ -428,30 +430,27 @@ export class AugmentationService {
             image.height
           );
 
-          // Upload augmented image
-          const fileKey = this.storageService.generateFileKey(
-            job.datasetId,
-            `aug_${i}_${image.fileName}`
-          );
-          await this.storageService.uploadFile(fileKey, result.buffer, image.mimeType);
+          const fileName = `aug_${i}_${image.fileName}`;
+          const fileKey = this.storageService.generateFileKey(job.datasetId, fileName);
 
-          // Create image record
-          const newImage = await this.prisma.image.create({
-            data: {
-              datasetId: job.datasetId,
-              fileKey,
-              fileName: `aug_${i}_${image.fileName}`,
-              mimeType: image.mimeType,
-              width: result.width,
-              height: result.height,
-              sha256: result.sha256,
-              isSynthetic: true,
-              syntheticSource: 'classical_augmentation',
-            },
-          });
+          const [newImage] = await Promise.all([
+            this.prisma.image.create({
+              data: {
+                datasetId: job.datasetId,
+                fileKey,
+                fileName,
+                mimeType: image.mimeType,
+                width: result.width,
+                height: result.height,
+                sha256: result.sha256,
+                isSynthetic: true,
+                syntheticSource: 'classical_augmentation',
+              },
+            }),
+            this.storageService.uploadFile(fileKey, result.buffer, image.mimeType),
+          ]);
 
-          // Transform and create annotations
-          const transformedAnnotations = this.classicalAugmentation.transformAnnotations(
+          const validAnnotations = this.classicalAugmentation.transformAnnotations(
             image.annotations.map((a) => ({
               id: a.id,
               labelClassId: a.labelClassId,
@@ -465,12 +464,11 @@ export class AugmentationService {
             image.height,
             result.width,
             result.height
-          );
+          ).filter((a) => a.isValid);
 
-          // Save valid annotations
-          for (const ann of transformedAnnotations.filter((a) => a.isValid)) {
-            await this.prisma.annotation.create({
-              data: {
+          if (validAnnotations.length > 0) {
+            await this.prisma.annotation.createMany({
+              data: validAnnotations.map((ann) => ({
                 imageId: newImage.id,
                 labelClassId: ann.labelClassId,
                 x: ann.x,
@@ -479,17 +477,23 @@ export class AugmentationService {
                 height: ann.height,
                 source: 'auto',
                 status: 'approved',
-              },
+              })),
             });
           }
 
           completed++;
           const progress = Math.round((completed / totalOperations) * 100);
-          await this.prisma.job.update({
-            where: { id: jobId },
-            data: { progress },
-          });
-        }
+          if (progress !== lastReportedProgress) {
+            lastReportedProgress = progress;
+            await this.prisma.job.update({ where: { id: jobId }, data: { progress } });
+          }
+        }));
+      };
+
+      // Process images in parallel batches
+      for (let i = 0; i < images.length; i += CONCURRENCY) {
+        const batch = images.slice(i, i + CONCURRENCY);
+        await Promise.all(batch.map(processImage));
       }
 
       // Mark job as succeeded
@@ -668,11 +672,17 @@ export class AugmentationService {
       const totalOperations = images.length * metadata.multiplier;
       let completed = 0;
       let totalCreated = 0;
+      let lastReportedProgress = -1;
 
-      for (const image of images) {
+      const CONCURRENCY = 3;
+      const ext = (fileName: string) => fileName.match(/\.[^/.]+$/)?.[0] || '.jpg';
+      const stem = (fileName: string) => fileName.replace(/\.[^/.]+$/, '');
+
+      const processImage = async (image: typeof images[0]) => {
         const imageBuffer = await this.storageService.downloadFile(image.fileKey);
+        const variants = Array.from({ length: metadata.multiplier }, (_, i) => i);
 
-        for (let i = 0; i < metadata.multiplier; i++) {
+        await Promise.all(variants.map(async (i) => {
           const imageSeed = this.randomAugmentation.generateImageSeed(
             metadata.seed || undefined,
             `${image.id}-${i}`
@@ -692,34 +702,39 @@ export class AugmentationService {
             image.height
           );
 
-          const fileKey = this.storageService.generateFileKey(
-            job.datasetId,
-            `${image.fileName.replace(/\.[^/.]+$/, '')}_aug_${String(i).padStart(3, '0')}${image.fileName.match(/\.[^/.]+$/)?.[0] || '.jpg'}`
-          );
-          await this.storageService.uploadFile(fileKey, result.buffer, image.mimeType);
+          const fileName = `${stem(image.fileName)}_aug_${String(i).padStart(3, '0')}${ext(image.fileName)}`;
+          const fileKey = this.storageService.generateFileKey(job.datasetId, fileName);
 
-          const newImage = await this.prisma.image.create({
-            data: {
-              datasetId: job.datasetId,
-              fileKey,
-              fileName: `${image.fileName.replace(/\.[^/.]+$/, '')}_aug_${String(i).padStart(3, '0')}${image.fileName.match(/\.[^/.]+$/)?.[0] || '.jpg'}`,
-              mimeType: image.mimeType,
-              width: result.width,
-              height: result.height,
-              sha256: result.sha256,
-              isSynthetic: true,
-              syntheticSource: 'random_augmentation',
-            },
-          });
+          await Promise.all([
+            this.prisma.image.create({
+              data: {
+                datasetId: job.datasetId,
+                fileKey,
+                fileName,
+                mimeType: image.mimeType,
+                width: result.width,
+                height: result.height,
+                sha256: result.sha256,
+                isSynthetic: true,
+                syntheticSource: 'random_augmentation',
+              },
+            }),
+            this.storageService.uploadFile(fileKey, result.buffer, image.mimeType),
+          ]);
 
           totalCreated++;
           completed++;
           const progress = Math.round((completed / totalOperations) * 100);
-          await this.prisma.job.update({
-            where: { id: jobId },
-            data: { progress },
-          });
-        }
+          if (progress !== lastReportedProgress) {
+            lastReportedProgress = progress;
+            await this.prisma.job.update({ where: { id: jobId }, data: { progress } });
+          }
+        }));
+      };
+
+      for (let i = 0; i < images.length; i += CONCURRENCY) {
+        const batch = images.slice(i, i + CONCURRENCY);
+        await Promise.all(batch.map(processImage));
       }
 
       await this.prisma.job.update({
