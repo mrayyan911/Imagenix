@@ -11,14 +11,14 @@ const team = [
   {
     name: 'Muhammad Rayyan',
     role: 'Founder and CEO',
-    image: 'https://github.com/user-attachments/assets/0b6e6bea-740e-48c3-8b9c-8faa6c4f116b',
+    image: '/images/team/rayyan.jpg',
     linkedin: 'https://www.linkedin.com/in/muhammadrayyan911',
     github: 'https://github.com/mrayyan911',
   },
   {
     name: 'Muhammad Khizar Mehmood',
     role: 'Co-Founder',
-    image: 'https://github.com/user-attachments/assets/9a19fabf-4087-4cb2-9665-d4ace8aeb059',
+    image: '/images/team/khizar.jpg',
     linkedin: 'https://www.linkedin.com/in/muhammad-khizar-mehmood-8478642a9',
     github: '',
   },
