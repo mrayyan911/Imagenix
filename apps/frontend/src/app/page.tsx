@@ -274,18 +274,14 @@ export default function LandingPage() {
       {/* CTA */}
       <AnimatedSection className="py-24 px-6 relative overflow-hidden">
         <div
-          className="absolute inset-0"
+          className="absolute inset-0 animate-gradient-shift"
           style={{
             background: 'linear-gradient(135deg,#1e40af,#3b82f6,#6366f1,#8b5cf6)',
             backgroundSize: '300% 300%',
-            animation: 'gradient-shift 6s ease infinite',
           }}
         />
         <div className="absolute top-1/2 left-1/4 -translate-y-1/2 w-64 h-64 rounded-full bg-white/10 blur-3xl animate-pulse-glow pointer-events-none" />
-        <div
-          className="absolute top-1/2 right-1/4 -translate-y-1/2 w-64 h-64 rounded-full bg-white/10 blur-3xl animate-pulse-glow pointer-events-none"
-          style={{ animationDelay: '1.5s' }}
-        />
+        <div className="absolute top-1/2 right-1/4 -translate-y-1/2 w-64 h-64 rounded-full bg-white/10 blur-3xl animate-pulse-glow pointer-events-none [animation-delay:1.5s]" />
         <div className="relative z-10 mx-auto max-w-3xl text-center">
           <FadeIn>
             <h2 className="text-4xl sm:text-5xl font-bold text-white">

@@ -20,6 +20,8 @@ import {
 } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
 
+const MAX_RECENT_PROJECTS = 5;
+
 export default function DashboardPage() {
   const { toast } = useToast();
   const { projects, setProjects } = useProjectStore();
@@ -158,7 +160,7 @@ export default function DashboardPage() {
               </div>
             ) : (
               <div className="divide-y divide-neutral-100">
-                {projects.slice(0, 5).map((project, i) => (
+                {projects.slice(0, MAX_RECENT_PROJECTS).map((project, i) => (
                   <motion.div
                     key={project.id}
                     initial={{ opacity: 0, x: -12 }}
