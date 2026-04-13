@@ -5,36 +5,22 @@ import { LandingNav } from '@/components/landing/landing-nav';
 import { FadeIn } from '@/components/animations/fade-in';
 import { StaggerChildren, StaggerItem } from '@/components/animations/stagger-children';
 import { AnimatedSection } from '@/components/animations/animated-section';
-import { Sparkles, ArrowRight, Github, Twitter, Linkedin } from 'lucide-react';
+import { Sparkles, ArrowRight, Github, Linkedin } from 'lucide-react';
 
 const team = [
   {
-    name: 'Alex Rahman',
-    role: 'Co-founder & CEO',
-    bio: 'Former ML lead at a top-5 tech company. Built dataset pipelines for 100M+ image corpora.',
-    avatar: 'AR',
-    color: 'bg-primary-100 text-primary-700',
+    name: 'Muhammad Rayyan',
+    role: 'Founder and CEO',
+    image: 'https://github.com/user-attachments/assets/0b6e6bea-740e-48c3-8b9c-8faa6c4f116b',
+    linkedin: 'https://www.linkedin.com/in/muhammadrayyan911',
+    github: 'https://github.com/mrayyan911',
   },
   {
-    name: 'Sara Chen',
-    role: 'Co-founder & CTO',
-    bio: 'PhD in Computer Vision. Author of several open-source annotation tools used by 50k+ developers.',
-    avatar: 'SC',
-    color: 'bg-purple-100 text-purple-700',
-  },
-  {
-    name: 'Jordan Kim',
-    role: 'Head of Product',
-    bio: 'Led product at two successful ML startups. Passionate about making AI tooling accessible.',
-    avatar: 'JK',
-    color: 'bg-emerald-100 text-emerald-700',
-  },
-  {
-    name: 'Priya Nair',
-    role: 'Head of Engineering',
-    bio: 'Full-stack engineer with deep expertise in real-time annotation UIs and distributed systems.',
-    avatar: 'PN',
-    color: 'bg-rose-100 text-rose-700',
+    name: 'Muhammad Khizar Mehmood',
+    role: 'Co-Founder',
+    image: 'https://github.com/user-attachments/assets/9a19fabf-4087-4cb2-9665-d4ace8aeb059',
+    linkedin: 'https://www.linkedin.com/in/muhammad-khizar-mehmood-8478642a9',
+    github: '',
   },
 ];
 
@@ -109,22 +95,26 @@ export default function AboutPage() {
               A small team with big ambitions for AI data infrastructure.
             </p>
           </FadeIn>
-          <StaggerChildren className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+          <StaggerChildren className="grid gap-6 sm:grid-cols-2 max-w-2xl mx-auto">
             {team.map((member) => (
               <StaggerItem key={member.name}>
                 <div className="p-6 rounded-2xl border border-neutral-200 bg-white text-center hover:shadow-md transition-shadow">
-                  <div
-                    className={`mx-auto h-16 w-16 rounded-full flex items-center justify-center text-xl font-bold ${member.color}`}
-                  >
-                    {member.avatar}
-                  </div>
+                  <img
+                    src={member.image}
+                    alt={member.name}
+                    className="mx-auto h-24 w-24 rounded-full object-cover"
+                  />
                   <h3 className="mt-4 font-semibold text-neutral-900">{member.name}</h3>
                   <p className="text-sm text-primary-600 font-medium">{member.role}</p>
-                  <p className="mt-3 text-xs text-neutral-500 leading-relaxed">{member.bio}</p>
                   <div className="mt-4 flex items-center justify-center gap-3 text-neutral-400">
-                    <Github className="h-4 w-4 hover:text-neutral-700 cursor-pointer transition-colors" />
-                    <Twitter className="h-4 w-4 hover:text-neutral-700 cursor-pointer transition-colors" />
-                    <Linkedin className="h-4 w-4 hover:text-neutral-700 cursor-pointer transition-colors" />
+                    {member.github && (
+                      <a href={member.github} target="_blank" rel="noopener noreferrer">
+                        <Github className="h-4 w-4 hover:text-neutral-700 cursor-pointer transition-colors" />
+                      </a>
+                    )}
+                    <a href={member.linkedin} target="_blank" rel="noopener noreferrer">
+                      <Linkedin className="h-4 w-4 hover:text-primary-600 cursor-pointer transition-colors" />
+                    </a>
                   </div>
                 </div>
               </StaggerItem>
