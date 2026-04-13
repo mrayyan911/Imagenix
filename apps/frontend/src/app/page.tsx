@@ -142,7 +142,7 @@ export default function LandingPage() {
                   <Button
                     variant="outline"
                     size="lg"
-                    className="border-neutral-700 text-neutral-300 hover:bg-neutral-800 hover:text-white"
+                    className="border-neutral-700 bg-transparent text-neutral-300 hover:bg-neutral-800 hover:text-white"
                   >
                     See How It Works
                   </Button>
@@ -305,7 +305,7 @@ export default function LandingPage() {
                 <Button
                   size="lg"
                   variant="outline"
-                  className="border-white/40 text-white hover:bg-white/10"
+                  className="border-white/40 bg-transparent text-white hover:bg-white/10"
                 >
                   View Pricing
                 </Button>
