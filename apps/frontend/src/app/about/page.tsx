@@ -25,11 +25,31 @@ const team = [
 ];
 
 const timeline = [
-  { year: '2022', title: 'Founded', desc: 'Started in a garage after feeling the pain of manual dataset curation at a vision startup.' },
-  { year: '2023 Q1', title: 'Public Beta', desc: 'Launched to 500 early users. First AI auto-annotation feature shipped.' },
-  { year: '2023 Q3', title: 'Seed Round', desc: 'Raised $3.2M seed to expand the team and build cloud infrastructure.' },
-  { year: '2024', title: 'Version Control', desc: 'Shipped dataset versioning — our most-requested feature — and crossed 5,000 users.' },
-  { year: 'Today', title: 'Scaling', desc: 'Processing millions of annotations per month for teams across 40 countries.' },
+  {
+    year: 'Year 1',
+    title: 'The Spark',
+    desc: 'From the edge of a bed, laptop open, deep in frustration — hours lost to hunting down images, writing labeling scripts, and wrestling with datasets too small to train anything meaningful. The data desert was real.',
+  },
+  {
+    year: 'Month 3',
+    title: 'The Mission Takes Shape',
+    desc: 'Frustration became direction. The goal crystallized: eliminate the code barrier for developers and researchers who just want to build — not spend their days wrangling data pipelines.',
+  },
+  {
+    year: 'Month 6',
+    title: 'No-Code Annotation Engine',
+    desc: 'Built the first working version of a no-code annotation tool — bounding boxes, segmentation masks, and class labeling without writing a single line of code. First internal tests passed.',
+  },
+  {
+    year: 'Month 9',
+    title: 'Augmentation Pipeline',
+    desc: 'Added an automated augmentation engine that could multiply a handful of images into a robust, production-ready library in minutes. What used to take days now took under five.',
+  },
+  {
+    year: 'Today',
+    title: 'Imagenix',
+    desc: 'A full No-Code Image Annotation & Augmentation SaaS — built by someone who lived the pain. So the next great idea is never held back by a lack of data.',
+  },
 ];
 
 export default function AboutPage() {
@@ -44,13 +64,13 @@ export default function AboutPage() {
             <Sparkles className="h-3 w-3" /> Our Story
           </span>
           <h1 className="text-5xl font-bold text-white">
-            Built by ML Engineers,
+            The Spark Behind
             <br />
-            <span className="text-primary-400">for ML Engineers</span>
+            <span className="text-primary-400">the Screen</span>
           </h1>
           <p className="mt-6 text-lg text-neutral-400 max-w-2xl mx-auto">
-            We got tired of stitching together spreadsheets, custom scripts, and expensive tools to
-            manage training data. So we built Imagenix — the platform we wished existed.
+            Born from late nights, messy datasets, and a relentless frustration with the &ldquo;data desert.&rdquo;
+            We stopped waiting for the right tool — and built it.
           </p>
         </FadeIn>
       </section>
@@ -58,8 +78,23 @@ export default function AboutPage() {
       {/* Timeline */}
       <AnimatedSection className="py-24 px-6 bg-white">
         <div className="mx-auto max-w-3xl">
-          <FadeIn className="mb-12 text-center">
+          <FadeIn className="mb-4 text-center">
             <h2 className="text-3xl font-bold text-neutral-900">Our Journey</h2>
+          </FadeIn>
+          <FadeIn className="mb-12 text-center">
+            <p className="text-neutral-500 max-w-xl mx-auto">
+              It started exactly <strong>one year ago</strong> — not in a high-tech lab, but from the edge of a bed
+              with a laptop and a relentless frustration with the <em>&ldquo;data desert.&rdquo;</em>
+            </p>
+          </FadeIn>
+          {/* Pull-quote */}
+          <FadeIn className="mb-14">
+            <blockquote className="relative border-l-4 border-primary-500 pl-6 py-2 text-neutral-600 italic text-lg">
+              &ldquo;I was tired of hitting the same brick wall: hours staring at a screen, wrestling with
+              insufficient datasets and the grueling, manual labor of labeling images — doing more
+              &lsquo;busy work&rsquo; than actual data science.&rdquo;
+              <span className="block mt-3 not-italic text-sm font-semibold text-primary-600">— Muhammad Rayyan, Founder</span>
+            </blockquote>
           </FadeIn>
           <div className="relative">
             {/* Vertical line */}
@@ -68,13 +103,10 @@ export default function AboutPage() {
               {timeline.map((t) => (
                 <StaggerItem key={t.year}>
                   <div className="flex gap-6">
-                    <div className="relative z-10 flex-shrink-0 h-12 w-12 rounded-full bg-primary-500 flex items-center justify-center text-white text-xs font-bold shadow-md">
-                      {t.year.slice(0, 4)}
+                    <div className="relative z-10 flex-shrink-0 h-12 w-12 rounded-full bg-primary-500 flex items-center justify-center text-white text-xs font-bold shadow-md leading-tight text-center px-1">
+                      {t.year}
                     </div>
                     <div className="pt-2">
-                      <span className="text-xs font-semibold text-primary-500 uppercase tracking-wider">
-                        {t.year}
-                      </span>
                       <h3 className="mt-1 text-lg font-semibold text-neutral-900">{t.title}</h3>
                       <p className="mt-1 text-sm text-neutral-600">{t.desc}</p>
                     </div>

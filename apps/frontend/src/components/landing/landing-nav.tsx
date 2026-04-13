@@ -37,7 +37,7 @@ export function LandingNav() {
             {/* Logo */}
             <Link href="/" className="flex items-center gap-2">
               <img src="/logo.png" alt="Imagenix" className="h-8 w-8 rounded-lg object-contain" />
-              <span className="text-xl font-semibold text-neutral-900">Imagenix</span>
+              <span className={`text-xl font-semibold transition-colors ${scrolled ? 'text-neutral-900' : 'text-white'}`}>Imagenix</span>
             </Link>
 
             {/* Desktop Nav */}
@@ -48,7 +48,11 @@ export function LandingNav() {
                   <Link key={link.href} href={link.href} className="relative px-4 py-2 group">
                     <span
                       className={`text-sm font-medium transition-colors ${
-                        isActive ? 'text-primary-600' : 'text-neutral-600 group-hover:text-neutral-900'
+                        isActive
+                          ? scrolled ? 'text-primary-600' : 'text-primary-400'
+                          : scrolled
+                          ? 'text-neutral-600 group-hover:text-neutral-900'
+                          : 'text-neutral-300 group-hover:text-white'
                       }`}
                     >
                       {link.label}
@@ -67,20 +71,20 @@ export function LandingNav() {
             {/* CTA */}
             <div className="hidden md:flex items-center gap-3">
               <Link href="/login">
-                <Button variant="ghost" size="sm">Login</Button>
+                <Button variant="ghost" size="sm" className={!scrolled ? 'text-white hover:text-white hover:bg-white/10' : ''}>Login</Button>
               </Link>
               <Link href="/register">
-                <Button size="sm">Get Started</Button>
+                <Button size="sm" className={!scrolled ? 'bg-white text-primary-700 hover:bg-neutral-100' : ''}>Get Started</Button>
               </Link>
             </div>
 
             {/* Mobile toggle */}
             <button
-              className="md:hidden p-2 rounded-lg hover:bg-neutral-100 transition-colors"
+              className={`md:hidden p-2 rounded-lg transition-colors ${scrolled ? 'hover:bg-neutral-100' : 'hover:bg-white/10'}`}
               onClick={() => setMobileOpen(!mobileOpen)}
               aria-label="Toggle menu"
             >
-              {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+              {mobileOpen ? <X className={`h-5 w-5 ${scrolled ? '' : 'text-white'}`} /> : <Menu className={`h-5 w-5 ${scrolled ? '' : 'text-white'}`} />}
             </button>
           </div>
         </div>
