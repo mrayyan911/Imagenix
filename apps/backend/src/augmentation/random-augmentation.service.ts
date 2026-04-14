@@ -273,10 +273,56 @@ export class RandomAugmentationService {
           case 'rotate':
             const degrees = transform.value || 0;
             if (Math.abs(degrees) > 0.5) {
-              pipeline = pipeline.rotate(degrees, { 
-                background: { r: 128, g: 128, b: 128, alpha: 1 } 
-              });
+              const radians = (degrees * Math.PI) / 180;
+              const abssin = Math.abs(Math.sin(radians));
+
+              // Mirror-extend the image so rotated corners contain reflected image
+              // content rather than a solid background fill.
+              const extendPx = Math.ceil(
+                Math.max(currentWidth, currentHeight) * abssin
+              );
+
+              if (extendPx > 0) {
+                const abscos = Math.abs(Math.cos(radians));
+                const extW = currentWidth + 2 * extendPx;
+                const extH = currentHeight + 2 * extendPx;
+
+                const extendedBuffer = await sharp(currentBuffer)
+                  .extend({
+                    top: extendPx,
+                    bottom: extendPx,
+                    left: extendPx,
+                    right: extendPx,
+                    extendWith: 'mirror',
+                  })
+                  .toBuffer();
+
+                const rotW = Math.round(extW * abscos + extH * abssin);
+                const rotH = Math.round(extW * abssin + extH * abscos);
+
+                const rotatedBuffer = await sharp(extendedBuffer).rotate(degrees).toBuffer();
+
+                // Crop back to original dimensions from the center
+                const cropLeft = Math.max(0, Math.round((rotW - currentWidth) / 2));
+                const cropTop = Math.max(0, Math.round((rotH - currentHeight) / 2));
+                const cropW = Math.min(currentWidth, rotW - cropLeft);
+                const cropH = Math.min(currentHeight, rotH - cropTop);
+
+                currentBuffer = await sharp(rotatedBuffer)
+                  .extract({ left: cropLeft, top: cropTop, width: cropW, height: cropH })
+                  .toBuffer();
+              } else {
+                currentBuffer = await pipeline.rotate(degrees).toBuffer();
+              }
+
+              const rotMeta = await sharp(currentBuffer).metadata();
+              if (rotMeta.width && rotMeta.height) {
+                currentWidth = rotMeta.width;
+                currentHeight = rotMeta.height;
+              }
               appliedTransforms.push(transform);
+              // Skip the generic toBuffer at the end of the loop since we already wrote currentBuffer
+              continue;
             }
             break;
 

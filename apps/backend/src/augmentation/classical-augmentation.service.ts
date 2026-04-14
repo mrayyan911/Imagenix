@@ -61,12 +61,55 @@ export class ClassicalAugmentationService {
 
         case 'rotate':
           const degrees = transform.value || 90;
-          pipeline = pipeline.rotate(degrees, { background: { r: 0, g: 0, b: 0, alpha: 0 } });
-          transformsApplied.push(`rotate_${degrees}`);
-          // Update dimensions for 90/270 degree rotations
-          if (degrees === 90 || degrees === 270 || degrees === -90 || degrees === -270) {
-            [currentWidth, currentHeight] = [currentHeight, currentWidth];
+          const radians = (degrees * Math.PI) / 180;
+          const abssin = Math.abs(Math.sin(radians));
+          const abscos = Math.abs(Math.cos(radians));
+
+          // Compute per-side mirror extension so rotated corners are filled with image content
+          const extendPx = Math.ceil(
+            Math.max(currentWidth, currentHeight) * abssin
+          );
+
+          if (extendPx > 0) {
+            // Extend image with reflected (mirrored) content, then rotate, then crop back
+            const extendedBuffer = await sharp(currentBuffer)
+              .extend({
+                top: extendPx,
+                bottom: extendPx,
+                left: extendPx,
+                right: extendPx,
+                extendWith: 'mirror',
+              })
+              .toBuffer();
+
+            const extW = currentWidth + 2 * extendPx;
+            const extH = currentHeight + 2 * extendPx;
+
+            // Rotated extended image dimensions
+            const rotW = Math.round(extW * abscos + extH * abssin);
+            const rotH = Math.round(extW * abssin + extH * abscos);
+
+            const rotatedBuffer = await sharp(extendedBuffer)
+              .rotate(degrees)
+              .toBuffer();
+
+            // Extract original-size region from center
+            const cropLeft = Math.max(0, Math.round((rotW - currentWidth) / 2));
+            const cropTop = Math.max(0, Math.round((rotH - currentHeight) / 2));
+            const cropW = Math.min(currentWidth, rotW - cropLeft);
+            const cropH = Math.min(currentHeight, rotH - cropTop);
+
+            pipeline = sharp(rotatedBuffer).extract({
+              left: cropLeft,
+              top: cropTop,
+              width: cropW,
+              height: cropH,
+            });
+          } else {
+            pipeline = pipeline.rotate(degrees);
           }
+          transformsApplied.push(`rotate_${degrees}`);
+          // Dimensions stay the same (we crop back to original size)
           break;
 
         case 'brightness':
@@ -194,29 +237,37 @@ export class ClassicalAugmentationService {
 
           case 'rotate':
             const degrees = transform.value || 90;
-            if (degrees === 90) {
-              const newX = imgH - y - h;
-              const newY = x;
-              const newW = h;
-              const newH = w;
-              x = newX;
-              y = newY;
-              w = newW;
-              h = newH;
-              [imgW, imgH] = [imgH, imgW];
-            } else if (degrees === 180) {
-              x = imgW - x - w;
-              y = imgH - y - h;
-            } else if (degrees === 270 || degrees === -90) {
-              const newX = y;
-              const newY = imgW - x - w;
-              const newW = h;
-              const newH = w;
-              x = newX;
-              y = newY;
-              w = newW;
-              h = newH;
-              [imgW, imgH] = [imgH, imgW];
+            // With the mirror-fill + crop approach, the output is always the same
+            // size as the input. Use the general corner-rotation formula for all angles.
+            {
+              const rad = (degrees * Math.PI) / 180;
+              const cosA = Math.cos(rad);
+              const sinA = Math.sin(rad);
+              const cx = imgW / 2;
+              const cy = imgH / 2;
+
+              const corners = [
+                { x, y },
+                { x: x + w, y },
+                { x: x + w, y: y + h },
+                { x, y: y + h },
+              ];
+
+              const rotated = corners.map((c) => ({
+                rx: cosA * (c.x - cx) - sinA * (c.y - cy) + cx,
+                ry: sinA * (c.x - cx) + cosA * (c.y - cy) + cy,
+              }));
+
+              const minX = Math.min(...rotated.map((c) => c.rx));
+              const maxX = Math.max(...rotated.map((c) => c.rx));
+              const minY = Math.min(...rotated.map((c) => c.ry));
+              const maxY = Math.max(...rotated.map((c) => c.ry));
+
+              x = minX;
+              y = minY;
+              w = maxX - minX;
+              h = maxY - minY;
+              // imgW / imgH stay the same – the output image has the same dimensions as input.
             }
             break;
 

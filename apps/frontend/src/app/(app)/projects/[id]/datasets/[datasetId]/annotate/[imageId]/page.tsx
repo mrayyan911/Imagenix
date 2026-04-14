@@ -134,25 +134,13 @@ export default function AnnotatePage() {
     loadData();
   }, [imageId, projectId, setCurrentImage, setAnnotations, setLabelClasses, selectLabelClass, toast]);
 
-  // Load actual image for canvas
-  useEffect(() => {
-    if (imageUrl) {
-      const img = new window.Image();
-      img.crossOrigin = 'anonymous';
-      img.onload = () => {
-        setLoadedImage(img);
-        calculateScale(img);
-      };
-      img.src = imageUrl;
-    }
-  }, [imageUrl]);
-
   // Calculate scale to fit image in container
   const calculateScale = useCallback((img: HTMLImageElement) => {
     if (!containerRef.current) return;
     const container = containerRef.current;
     const maxWidth = container.clientWidth - 40;
     const maxHeight = container.clientHeight - 40;
+    if (maxWidth <= 0 || maxHeight <= 0) return;
     const scaleX = maxWidth / img.width;
     const scaleY = maxHeight / img.height;
     const newScale = Math.min(scaleX, scaleY, 1);
@@ -162,6 +150,31 @@ export default function AnnotatePage() {
       y: (container.clientHeight - img.height * newScale) / 2,
     });
   }, []);
+
+  // Load actual image for canvas
+  useEffect(() => {
+    if (imageUrl) {
+      const img = new window.Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        setLoadedImage(img);
+        // Use requestAnimationFrame to ensure the container has been laid out before
+        // calculating scale, preventing the initial zoomed-in view.
+        requestAnimationFrame(() => calculateScale(img));
+      };
+      img.src = imageUrl;
+    }
+  }, [imageUrl, calculateScale]);
+
+  // Recalculate scale whenever the container resizes (e.g. panel resize, window resize)
+  useEffect(() => {
+    if (!loadedImage || !containerRef.current) return;
+    const observer = new ResizeObserver(() => {
+      calculateScale(loadedImage);
+    });
+    observer.observe(containerRef.current);
+    return () => observer.disconnect();
+  }, [loadedImage, calculateScale]);
 
   // Draw canvas
   useEffect(() => {
