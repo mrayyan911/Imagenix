@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuthStore } from '@/stores/auth-store';
 import { Button } from '@/components/ui/button';
+import { ThemeToggle } from '@/components/layout/theme-toggle';
 import {
   LayoutDashboard,
   FolderOpen,
@@ -86,7 +87,8 @@ export function AppShell({ children }: AppShellProps) {
           </nav>
 
           {/* User Menu */}
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <ThemeToggle />
             <div className="flex items-center gap-2 text-sm">
               <div className="h-8 w-8 rounded-full bg-primary-100 flex items-center justify-center">
                 <User className="h-4 w-4 text-primary-600" />
