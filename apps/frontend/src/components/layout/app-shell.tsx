@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuthStore } from '@/stores/auth-store';
 import { Button } from '@/components/ui/button';
+import { ThemeToggle } from '@/components/layout/theme-toggle';
 import {
   LayoutDashboard,
   FolderOpen,
@@ -62,9 +63,7 @@ export function AppShell({ children }: AppShellProps) {
         <div className="flex h-16 items-center justify-between px-6">
           {/* Logo */}
           <Link href="/dashboard" className="flex items-center gap-2">
-            <div className="h-8 w-8 rounded-lg bg-primary-500 flex items-center justify-center">
-              <span className="text-white font-bold text-sm">IX</span>
-            </div>
+            <img src="/logo.png" alt="Imagenix" className="h-8 w-8 rounded-lg object-contain" />
             <span className="text-xl font-semibold text-neutral-900">Imagenix</span>
           </Link>
 
@@ -88,7 +87,8 @@ export function AppShell({ children }: AppShellProps) {
           </nav>
 
           {/* User Menu */}
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <ThemeToggle />
             <div className="flex items-center gap-2 text-sm">
               <div className="h-8 w-8 rounded-full bg-primary-100 flex items-center justify-center">
                 <User className="h-4 w-4 text-primary-600" />

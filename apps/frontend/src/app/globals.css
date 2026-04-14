@@ -59,6 +59,18 @@
   }
 }
 
+/* Shimmer animation for skeleton loaders */
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+/* Smooth theme transition */
+body {
+  transition: color 0.3s, background-color 0.3s;
+}
+
 /* Custom scrollbar */
 ::-webkit-scrollbar {
   width: 8px;

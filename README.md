@@ -1,12 +1,12 @@
 <p align="center">
-  <img src="docs/assets/logo.svg" alt="Imagenix Logo" width="200" />
+  <img src="docs/assets/logo.png" alt="Imagenix Logo" width="200" />
 </p>
 
 <h1 align="center">Imagenix</h1>
 
 <p align="center">
-  <strong>AI Dataset Intelligence Platform</strong><br/>
-  Build high-quality image datasets faster with AI-powered annotation and augmentation
+  <strong>AI-Powered Image Dataset Platform</strong><br/>
+  Create, annotate, augment, and export production-ready image datasets for computer vision model training.
 </p>
 
 <p align="center">
@@ -16,66 +16,79 @@
   <img src="https://img.shields.io/badge/PostgreSQL-15.6-336791?logo=postgresql" alt="PostgreSQL" />
   <img src="https://img.shields.io/badge/Prisma-5.10-2d3748?logo=prisma" alt="Prisma" />
   <img src="https://img.shields.io/badge/Redis-7.2-dc382d?logo=redis" alt="Redis" />
+  <img src="https://img.shields.io/badge/Python-3.10+-3776ab?logo=python" alt="Python" />
   <img src="https://img.shields.io/badge/License-MIT-green" alt="License" />
-</p>
-
-<p align="center">
-  <a href="#-features">Features</a> •
-  <a href="#-quick-start">Quick Start</a> •
-  <a href="#-screenshots">Screenshots</a> •
-  <a href="#-architecture">Architecture</a> •
-  <a href="#-api-reference">API</a> •
-  <a href="#-contributing">Contributing</a>
 </p>
 
 ---
 
-## Overview
+## What is Imagenix?
 
-Imagenix is a cloud-native platform designed for machine learning teams to efficiently create, manage, and export high-quality image datasets. Whether you're training object detection models, building classification systems, or preparing data for computer vision tasks, Imagenix streamlines your workflow from raw images to production-ready datasets.
+Imagenix is a full-stack platform that helps ML teams build high-quality image datasets faster. It handles the entire pipeline from raw images to training-ready exports:
+
+1. **Upload** images via drag-and-drop with automatic deduplication
+2. **Annotate** with bounding box tools or AI-powered auto-annotation (Grounding DINO)
+3. **Augment** datasets using classical transforms, random pipelines, or generative AI (Stable Diffusion)
+4. **Export** in COCO, YOLO, Pascal VOC, or as labeled images (PNG/JPG with annotations drawn)
 
 ---
 
 ## Features
 
-### Dataset Management
-| Feature | Description |
-|---------|-------------|
-| **Multi-Project Organization** | Organize datasets across multiple projects with role-based access |
-| **Bulk Image Upload** | Drag-and-drop upload with automatic thumbnail generation |
-| **Duplicate Detection** | Perceptual hashing prevents duplicate images |
-| **Version Tracking** | Track dataset changes and maintain version history |
+### Dataset & Image Management
+- Multi-project organization with per-project label classes
+- Bulk drag-and-drop upload with presigned S3 URLs
+- Duplicate detection via perceptual hashing (phash)
+- Bulk image selection, deletion, and management
+- Selection state persists across page navigation
 
-### Annotation Tools
-| Feature | Description |
-|---------|-------------|
-| **Interactive Canvas** | Smooth bounding box annotation with zoom, pan, and keyboard shortcuts |
-| **Label Management** | Create and manage label classes with custom colors |
-| **Bulk Operations** | Select and modify multiple annotations at once |
-| **Auto-Save** | Annotations are automatically saved as you work |
+### Annotation
+- Interactive bounding box drawing on an HTML5 Canvas
+- Resizable annotations with drag handles (NW, N, NE, E, SE, S, SW, W)
+- Label classes with custom colors, auto-created during auto-annotation
+- Annotation status tracking (draft, approved, rejected)
+- Delete annotations individually or by label class (per-image or bulk)
 
-### AI-Powered Features
-| Feature | Description |
-|---------|-------------|
-| **Auto-Annotation** | One-click AI object detection using local models |
-| **Smart Suggestions** | AI-assisted label recommendations based on image content |
-| **Confidence Filtering** | Filter auto-annotations by confidence threshold |
+### AI Auto-Annotation
+- **Grounding DINO** open-vocabulary detection -- type any class name to detect it
+- Configurable confidence threshold (default 0.35)
+- Batch processing with real-time progress tracking
+- Job runs in background -- navigate freely without losing progress
+- Auto-annotations saved as `draft` with `source: auto` for human review
 
-### Data Augmentation Studio
-| Feature | Description |
-|---------|-------------|
-| **Classical Transforms** | Flip, rotate, brightness, contrast, saturation, blur, noise, crop, scale |
-| **Annotation Preservation** | Bounding boxes automatically transform with images |
-| **Live Preview** | See augmentation effects before applying |
-| **Batch Processing** | Apply transforms to entire datasets with multiplier control |
-| **Generative Augmentation** | (Coming Soon) AI-generated synthetic images for dataset expansion |
+### Classical Augmentation
+- 14 transform types: flip, rotate, brightness, contrast, saturation, blur, noise, scale, crop, hue, gamma, sharpen, JPEG compression, translate
+- Bounding box annotations automatically transform with images
+- Live preview before applying
+- 1-10x multiplier per source image
+- Apply to selected images or entire dataset
 
-### Export Formats
-| Format | Use Case |
-|--------|----------|
-| **COCO JSON** | TensorFlow, Detectron2, MMDetection |
-| **YOLO TXT** | Ultralytics YOLOv5/v8, Darknet |
-| **Pascal VOC XML** | PyTorch, Caffe, older frameworks |
+### Random Augmentation (Training Pipeline)
+- One-click random augmentation for model training workflows
+- **Strength levels**: Low (1-2 transforms), Medium (2-4), High (3-6)
+- Transforms randomly selected from geometry, color, and quality categories
+- Optional seed input for reproducible results (per-image seed = hash of seed + imageId)
+- Before/after preview with regenerate option
+- Creates new augmented copies without modifying originals
+
+### Generative Augmentation (Stable Diffusion + ControlNet)
+- Structure-preserving image generation via ControlNet (Canny, Depth, HED)
+- Preset variations: weather, lighting, background, nature scenes
+- Custom free-form text prompts
+- Anti-hallucination validation (Canny edge IoU > 0.7 with auto-retry)
+- Dual ControlNet (Canny + Depth) for maximum structural fidelity
+- RunPod (self-hosted GPU) or Replicate (cloud API) backends
+
+### Export
+| Format | Output | Use Case |
+|--------|--------|----------|
+| **COCO JSON** | `annotations/instances.json` | TensorFlow, Detectron2, MMDetection |
+| **YOLO TXT** | Per-image `.txt` labels + `data.yaml` | Ultralytics YOLOv5/v8, Darknet |
+| **Pascal VOC XML** | Per-image `.xml` annotations | PyTorch, Caffe, older frameworks |
+| **Labeled JPG** | ZIP of images with bounding boxes drawn | Visual review, documentation |
+| **Labeled PNG** | ZIP of images with bounding boxes drawn (lossless) | Quality inspection |
+
+All exports are generated as ZIP archives with signed download URLs valid for 7 days. Labeled image exports include a `manifest.json` with full annotation metadata.
 
 ---
 
@@ -83,95 +96,84 @@ Imagenix is a cloud-native platform designed for machine learning teams to effic
 
 ### Prerequisites
 
-- **Node.js** >= 20.11.0
-- **Docker** & Docker Compose
-- **npm** >= 10.2.0
+| Requirement | Version |
+|-------------|---------|
+| Node.js | >= 20.11.0 |
+| npm | >= 10.2.0 |
+| Docker & Docker Compose | Latest |
+| Python | >= 3.10 (optional, for generative features) |
 
-### Installation
+### 1. Clone and Configure
 
 ```bash
-# 1. Clone the repository
 git clone https://github.com/your-org/imagenix.git
 cd imagenix
+cp .env.example .env
+```
 
-# 2. Install dependencies
-npm install
+The default `.env` works for local development with Docker. Key variables:
 
-# 3. Start infrastructure (PostgreSQL, Redis, MinIO)
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `DATABASE_URL` | `postgresql://imagenix:imagenix_dev_password@localhost:5432/imagenix` | PostgreSQL |
+| `REDIS_URL` | `redis://localhost:6379` | Redis |
+| `S3_ENDPOINT` | `http://localhost:9000` | MinIO (S3-compatible storage) |
+| `NEXT_PUBLIC_API_URL` | `http://localhost:3001/api/v1` | Backend API URL |
+| `JWT_SECRET` | (set in .env) | JWT signing key |
+
+### 2. Start Infrastructure
+
+```bash
 docker compose up -d
+```
 
-# 4. Setup database
+This starts PostgreSQL (5432), Redis (6379), and MinIO (9000/9001) with auto-created buckets.
+
+### 3. Install and Setup
+
+```bash
+npm install
 npm run db:generate
 npm run db:migrate
-npm run db:seed  # Optional: adds sample data
+npm run db:seed         # Optional: creates demo user
+```
 
-# 5. Start development servers
+### 4. Run
+
+```bash
 npm run dev
 ```
 
-### Access Points
+Frontend runs on **http://localhost:3000**, backend on **http://localhost:3001**.
 
-| Service | URL | Credentials |
-|---------|-----|-------------|
-| **Frontend** | http://localhost:3000 | — |
-| **Backend API** | http://localhost:3001/api/v1 | — |
-| **MinIO Console** | http://localhost:9001 | `minioadmin` / `minioadmin123` |
-| **Prisma Studio** | `npm run db:studio` | — |
+### 5. ML Service (Optional)
+
+Required only for generative augmentation:
+
+```bash
+cd apps/ml-service
+python -m venv .venv
+.venv\Scripts\activate          # Windows
+# source .venv/bin/activate     # macOS/Linux
+pip install -r requirements.txt
+python main.py
+```
 
 ### Demo Credentials
 
-After seeding, login with:
-- **Email**: `demo@imagenix.ai`
-- **Password**: `demo123`
+After `npm run db:seed`:
+- **Email:** `demo@imagenix.ai`
+- **Password:** `demo123`
 
----
+### Access Points
 
-## Screenshots
-
-<details>
-<summary><strong>Dashboard</strong></summary>
-
-> Overview of all projects with quick stats and recent activity
-
-![Dashboard](docs/assets/screenshots/dashboard.png)
-
-</details>
-
-<details>
-<summary><strong>Dataset Gallery</strong></summary>
-
-> Browse images with thumbnail grid, filtering, and bulk selection
-
-![Dataset Gallery](docs/assets/screenshots/dataset-gallery.png)
-
-</details>
-
-<details>
-<summary><strong>Annotation Editor</strong></summary>
-
-> Interactive canvas with bounding box tools and label panel
-
-![Annotation Editor](docs/assets/screenshots/annotation-editor.png)
-
-</details>
-
-<details>
-<summary><strong>Augmentation Studio</strong></summary>
-
-> Configure classical and generative augmentation transforms
-
-![Augmentation Studio](docs/assets/screenshots/augmentation-studio.png)
-
-</details>
-
-<details>
-<summary><strong>Export Dialog</strong></summary>
-
-> Export datasets in COCO, YOLO, or Pascal VOC formats
-
-![Export Dialog](docs/assets/screenshots/export-dialog.png)
-
-</details>
+| Service | URL |
+|---------|-----|
+| Frontend | http://localhost:3000 |
+| Backend API | http://localhost:3001/api/v1 |
+| MinIO Console | http://localhost:9001 (`minioadmin` / `minioadmin123`) |
+| Prisma Studio | `npm run db:studio` |
+| ML Service | http://localhost:8000 (if running) |
 
 ---
 
@@ -179,359 +181,290 @@ After seeding, login with:
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                           IMAGENIX                                  │
-├─────────────────────────────────────────────────────────────────────┤
+│                         IMAGENIX PLATFORM                          │
 │                                                                     │
-│  ┌──────────────┐     ┌──────────────┐     ┌──────────────────┐    │
-│  │   Frontend   │────▶│   Backend    │────▶│   PostgreSQL     │    │
-│  │  (Next.js)   │     │  (NestJS)    │     │   (Database)     │    │
-│  │  Port 3000   │     │  Port 3001   │     │   Port 5432      │    │
-│  └──────────────┘     └──────┬───────┘     └──────────────────┘    │
+│  ┌──────────────┐     ┌──────────────┐     ┌────────────────────┐  │
+│  │   Frontend    │     │   Backend    │     │   ML Service       │  │
+│  │  Next.js 14   │────▶│  NestJS 10   │────▶│  FastAPI + PyTorch │  │
+│  │  Port 3000    │REST │  Port 3001   │REST │  Port 8000         │  │
+│  └──────────────┘     └──────┬───────┘     └────────────────────┘  │
 │                              │                                      │
-│                              │                                      │
-│                    ┌─────────┴─────────┐                           │
-│                    │                   │                           │
-│              ┌─────▼─────┐      ┌──────▼──────┐                    │
-│              │   Redis   │      │    MinIO    │                    │
-│              │  (Cache)  │      │  (Storage)  │                    │
-│              │ Port 6379 │      │ Port 9000   │                    │
-│              └───────────┘      └─────────────┘                    │
-│                                                                     │
+│               ┌──────────────┼──────────────┐                       │
+│               │              │              │                       │
+│         ┌─────▼─────┐ ┌─────▼────┐ ┌───────▼─────┐                │
+│         │ PostgreSQL │ │  Redis   │ │    MinIO    │                │
+│         │  Port 5432 │ │ Port 6379│ │  Port 9000  │                │
+│         └───────────┘ └──────────┘ └─────────────┘                │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
-### Project Structure
+| Flow | Description |
+|------|-------------|
+| Frontend → Backend | REST API with JWT Bearer authentication |
+| Backend → PostgreSQL | Data persistence via Prisma ORM |
+| Backend → Redis | Job progress tracking and caching |
+| Backend → MinIO | Image and export file storage via presigned URLs |
+| Backend → Replicate | Auto-annotation (Grounding DINO) via Replicate API |
+| Backend → ML Service | Generative augmentation (Stable Diffusion + ControlNet) |
+
+---
+
+## Project Structure
 
 ```
 imagenix/
 ├── apps/
-│   ├── frontend/                 # Next.js 14 application
+│   ├── frontend/                     # Next.js 14 application
 │   │   ├── src/
-│   │   │   ├── app/              # App router pages
-│   │   │   ├── components/       # React components
-│   │   │   ├── lib/              # API clients, utilities
-│   │   │   └── stores/           # Zustand state management
-│   │   └── public/               # Static assets
+│   │   │   ├── app/(auth)/           # Login, Register
+│   │   │   ├── app/(app)/            # Dashboard, Projects, Datasets,
+│   │   │   │   └── projects/         # Annotation, Augmentation
+│   │   │   ├── components/           # React components (shadcn/ui)
+│   │   │   ├── lib/                  # API client, utilities
+│   │   │   └── stores/               # Zustand stores (annotation, dataset, auth)
+│   │   └── public/
 │   │
-│   └── backend/                  # NestJS API server
-│       ├── src/
-│       │   ├── auth/             # JWT authentication
-│       │   ├── projects/         # Project management
-│       │   ├── datasets/         # Dataset operations
-│       │   ├── images/           # Image upload/management
-│       │   ├── annotations/      # Bounding box CRUD
-│       │   ├── augmentation/     # Classical & generative
-│       │   ├── exports/          # Format conversion
-│       │   └── jobs/             # Background processing
-│       └── prisma/               # Database schema & migrations
+│   ├── backend/                      # NestJS API server
+│   │   ├── src/
+│   │   │   ├── auth/                 # JWT authentication & sessions
+│   │   │   ├── projects/             # Project CRUD
+│   │   │   ├── datasets/             # Dataset CRUD & ownership
+│   │   │   ├── images/               # Image upload, list, bulk delete
+│   │   │   ├── annotations/          # Bounding box CRUD
+│   │   │   ├── label-classes/        # Label class management
+│   │   │   ├── augmentation/         # Classical, random & generative augmentation
+│   │   │   ├── exports/              # COCO, YOLO, VOC, labeled image exports
+│   │   │   ├── jobs/                 # Background job processing & auto-annotation
+│   │   │   ├── storage/              # S3/MinIO abstraction
+│   │   │   ├── redis/                # Redis client module
+│   │   │   └── prisma/               # Prisma database module
+│   │   └── prisma/                   # Schema & migrations
+│   │
+│   └── ml-service/                   # Python FastAPI ML microservice
+│       ├── api/                      # Route handlers
+│       ├── models/                   # Model manager (SD + ControlNet)
+│       ├── utils/                    # Image processing utilities
+│       └── main.py                   # Entry point
 │
 ├── packages/
-│   ├── shared-types/             # TypeScript interfaces
-│   └── ui-components/            # Shared UI library
+│   ├── shared-types/                 # Shared TypeScript interfaces
+│   └── ui-components/                # Shared UI library
 │
-├── docs/                         # Documentation
-├── infrastructure/               # Deployment configs
-└── docker-compose.yml            # Local development services
+├── docker-compose.yml                # Infrastructure (Postgres, Redis, MinIO)
+├── turbo.json                        # Turborepo config
+└── package.json                      # Root workspace
 ```
 
 ---
 
 ## Tech Stack
 
-### Frontend
-
-| Technology | Version | Purpose |
-|------------|---------|---------|
-| Next.js | 14.2 | React framework with App Router |
-| TypeScript | 5.4 | Type safety |
-| Tailwind CSS | 3.4 | Utility-first styling |
-| shadcn/ui | 0.9 | Accessible component library |
-| Zustand | 4.5 | State management |
-| React Hook Form | 7.50 | Form handling |
-| React Konva | 18.2 | Canvas-based annotation |
-| Axios | 1.6 | HTTP client |
-| Lucide React | 0.344 | Icon library |
-
-### Backend
-
-| Technology | Version | Purpose |
-|------------|---------|---------|
-| Node.js | 20.11 | Runtime |
-| NestJS | 10.3 | Framework with DI |
-| Prisma | 5.10 | ORM & migrations |
-| PostgreSQL | 15.6 | Primary database |
-| Redis | 7.2 | Caching & job queues |
-| MinIO | - | S3-compatible object storage |
-| Passport.js | - | JWT authentication |
-| Sharp | 0.33 | Image processing |
-| Archiver | 7.0 | ZIP file generation |
+| Layer | Technologies |
+|-------|-------------|
+| **Frontend** | Next.js 14, React 18, TypeScript, Tailwind CSS, shadcn/ui, Zustand, React Dropzone, Axios |
+| **Backend** | NestJS 10, Prisma 5.10, Sharp 0.33, Archiver, Passport + JWT, class-validator |
+| **Database** | PostgreSQL 15.6, Redis 7.2 |
+| **Storage** | MinIO (S3-compatible), presigned URLs for upload/download |
+| **ML Service** | FastAPI, PyTorch, Diffusers (Stable Diffusion v1.5), ControlNet, OpenCV |
+| **Infrastructure** | Docker Compose, Turborepo, Husky + lint-staged, ESLint + Prettier |
 
 ---
 
-## Available Scripts
+## Database Schema
 
-### Development
-
-| Command | Description |
-|---------|-------------|
-| `npm run dev` | Start frontend & backend in dev mode |
-| `npm run dev:frontend` | Start only frontend |
-| `npm run dev:backend` | Start only backend |
-
-### Database
-
-| Command | Description |
-|---------|-------------|
-| `npm run db:generate` | Generate Prisma client |
-| `npm run db:migrate` | Run pending migrations |
-| `npm run db:seed` | Seed sample data |
-| `npm run db:studio` | Open Prisma Studio GUI |
-| `npm run db:reset` | Reset database (destructive) |
-
-### Infrastructure
-
-| Command | Description |
-|---------|-------------|
-| `npm run docker:up` | Start PostgreSQL, Redis, MinIO |
-| `npm run docker:down` | Stop all containers |
-| `npm run docker:logs` | View container logs |
-
-### Build & Test
-
-| Command | Description |
-|---------|-------------|
-| `npm run build` | Production build |
-| `npm run lint` | ESLint check |
-| `npm run test` | Run test suite |
-| `npm run test:e2e` | End-to-end tests |
+| Model | Description |
+|-------|-------------|
+| **User** | Accounts with email, password hash, role, and plan |
+| **Session** | JWT refresh token sessions |
+| **Project** | Top-level organizational unit |
+| **Dataset** | Collection of images within a project |
+| **LabelClass** | Label categories with hex colors, scoped per project |
+| **Image** | Uploaded images with metadata (dimensions, hash, synthetic flag) |
+| **Annotation** | Bounding boxes (x, y, width, height) with confidence, source, and status |
+| **Job** | Background job tracking (auto-annotation, augmentation, export) |
+| **Export** | Completed export files with format, size, and expiration |
 
 ---
 
 ## API Reference
 
-Base URL: `http://localhost:3001/api/v1`
+**Base URL:** `http://localhost:3001/api/v1`
 
-### Authentication
+All authenticated endpoints require: `Authorization: Bearer <access_token>`
 
-```http
-POST   /auth/register     # Create account
-POST   /auth/login        # Get access + refresh tokens
-POST   /auth/refresh      # Refresh access token
-POST   /auth/logout       # Revoke session
-GET    /auth/me           # Get current user
+### Auth
+```
+POST   /auth/register
+POST   /auth/login
+POST   /auth/refresh
+POST   /auth/logout
+GET    /auth/me
 ```
 
 ### Projects
-
-```http
-GET    /projects          # List user's projects
-POST   /projects          # Create project
-GET    /projects/:id      # Get project details
-PATCH  /projects/:id      # Update project
-DELETE /projects/:id      # Delete project (cascades)
+```
+GET    /projects
+POST   /projects
+GET    /projects/:id
+PATCH  /projects/:id
+DELETE /projects/:id
 ```
 
 ### Datasets
-
-```http
-POST   /projects/:id/datasets        # Create dataset
-GET    /datasets/:id                 # Get dataset with stats
-PATCH  /datasets/:id                 # Update dataset
-DELETE /datasets/:id                 # Delete dataset
+```
+POST   /projects/:id/datasets
+GET    /datasets/:id
+PATCH  /datasets/:id
+DELETE /datasets/:id
 ```
 
 ### Images
-
-```http
-POST   /datasets/:id/images/upload-url   # Get presigned upload URL
-POST   /datasets/:id/images/commit       # Confirm upload complete
-GET    /datasets/:id/images              # List images (paginated)
-GET    /images/:id                       # Get image details
-DELETE /images/:id                       # Delete image
+```
+POST   /datasets/:id/images/upload-url
+POST   /datasets/:id/images/commit
+GET    /datasets/:id/images
+POST   /datasets/:id/images/bulk-delete
+GET    /images/:id
+DELETE /images/:id
 ```
 
 ### Annotations
-
-```http
-POST   /images/:id/annotations       # Create annotation
-GET    /images/:id/annotations       # List annotations
-PATCH  /annotations/:id              # Update annotation
-DELETE /annotations/:id              # Delete annotation
-POST   /images/:id/annotations/bulk  # Bulk update
+```
+POST   /images/:id/annotations
+GET    /images/:id/annotations
+PATCH  /annotations/:id
+DELETE /annotations/:id
+POST   /images/:id/annotations/bulk
 ```
 
 ### Label Classes
-
-```http
-POST   /datasets/:id/label-classes   # Create label class
-GET    /datasets/:id/label-classes   # List label classes
-PATCH  /label-classes/:id            # Update label class
-DELETE /label-classes/:id            # Delete label class
+```
+POST   /datasets/:id/label-classes
+GET    /datasets/:id/label-classes
+PATCH  /label-classes/:id
+DELETE /label-classes/:id
 ```
 
 ### Jobs
-
-```http
-POST   /datasets/:id/jobs/auto-annotate  # Start auto-annotation
-GET    /jobs/:id                         # Get job status
-POST   /jobs/:id/cancel                  # Cancel job
+```
+POST   /datasets/:id/jobs/auto-annotate
+GET    /jobs/:id
+POST   /jobs/:id/cancel
 ```
 
 ### Augmentation
-
-```http
-GET    /datasets/:id/augmentation/capabilities   # Get available transforms
-POST   /datasets/:id/augmentation/classical      # Create classical augmentation job
-POST   /datasets/:id/augmentation/generative     # Create generative augmentation job
-POST   /datasets/:id/augmentation/preview        # Preview augmentation
+```
+GET    /augmentation/capabilities
+POST   /datasets/:id/augmentation/classical
+POST   /datasets/:id/augmentation/generative
+POST   /datasets/:id/augmentation/random
+POST   /images/:id/augmentation/preview
+POST   /images/:id/augmentation/random/preview
 ```
 
 ### Exports
+```
+POST   /datasets/:id/exports
+GET    /exports
+GET    /exports/:id
+GET    /exports/:id/download
+```
 
-```http
-POST   /datasets/:id/exports         # Create export job
-GET    /exports                      # List user's exports
-GET    /exports/:id                  # Get export status
-GET    /exports/:id/download         # Get download URL
+### Error Format
+```json
+{
+  "success": false,
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "Description",
+    "requestId": "uuid"
+  }
+}
 ```
 
 ---
 
-## Environment Variables
+## Available Scripts
 
-### Backend (`apps/backend/.env`)
-
-```env
-# Database
-DATABASE_URL="postgresql://imagenix:imagenix_dev@localhost:5432/imagenix"
-
-# Authentication
-JWT_SECRET="your-secret-key"
-JWT_EXPIRATION="15m"
-JWT_REFRESH_SECRET="your-refresh-secret"
-JWT_REFRESH_EXPIRATION="7d"
-
-# Redis
-REDIS_HOST="localhost"
-REDIS_PORT="6379"
-
-# Object Storage (MinIO/S3)
-S3_ENDPOINT="http://localhost:9000"
-S3_ACCESS_KEY="minioadmin"
-S3_SECRET_KEY="minioadmin123"
-S3_BUCKET_UPLOADS="imagenix-uploads"
-S3_BUCKET_EXPORTS="imagenix-exports"
-
-# Feature Flags
-FEATURE_AUTO_ANNOTATION="true"
-FEATURE_AUGMENTATION="true"
-FEATURE_GENERATIVE_AUGMENTATION="false"
-```
+| Command | Description |
+|---------|-------------|
+| `npm run dev` | Start frontend + backend in dev mode |
+| `npm run dev:frontend` | Start only frontend |
+| `npm run dev:backend` | Start only backend |
+| `npm run build` | Production build |
+| `npm run lint` | Run ESLint |
+| `npm run db:generate` | Generate Prisma client |
+| `npm run db:migrate` | Run database migrations |
+| `npm run db:seed` | Seed sample data |
+| `npm run db:studio` | Open Prisma Studio |
+| `npm run docker:up` | Start infrastructure containers |
+| `npm run docker:down` | Stop infrastructure containers |
 
 ---
 
-## Keyboard Shortcuts
-
-### Annotation Editor
+## Keyboard Shortcuts (Annotation Editor)
 
 | Shortcut | Action |
 |----------|--------|
-| `V` | Select/Move tool |
-| `B` | Bounding box tool |
-| `Delete` / `Backspace` | Delete selected annotation |
+| `V` | Select / Move tool |
+| `B` | Bounding box draw tool |
+| `Delete` | Delete selected annotation |
 | `Ctrl + S` | Save annotations |
-| `Ctrl + Z` | Undo |
-| `Ctrl + Shift + Z` | Redo |
-| `+` / `-` | Zoom in/out |
+| `Ctrl + Z` / `Ctrl + Shift + Z` | Undo / Redo |
+| `+` / `-` | Zoom in / out |
 | `0` | Reset zoom |
-| `Arrow Keys` | Navigate images |
+| Arrow Keys | Navigate between images |
 | `Escape` | Deselect / Cancel |
 
 ---
 
 ## Troubleshooting
 
-<details>
-<summary><strong>Port already in use</strong></summary>
-
-Kill processes using the ports:
-
+**Port already in use**
 ```bash
-# Windows (CMD)
+# Windows
 taskkill /F /IM node.exe /T
-
-# Linux/macOS
+# macOS/Linux
 lsof -ti:3000,3001 | xargs kill -9
 ```
 
-</details>
+**Database connection failed**
+```bash
+docker compose down && docker compose up -d
+# Check: docker logs imagenix-postgres
+```
 
-<details>
-<summary><strong>Database connection failed</strong></summary>
-
-1. Ensure Docker is running: `docker ps`
-2. Restart containers: `docker compose down && docker compose up -d`
-3. Verify PostgreSQL is healthy: `docker logs imagenix-postgres`
-
-</details>
-
-<details>
-<summary><strong>Prisma generate fails (EPERM on Windows)</strong></summary>
-
+**Prisma generate fails (EPERM on Windows)**
 1. Close all terminals and IDE
-2. Kill node processes: `taskkill /F /IM node.exe /T`
-3. Delete node_modules: `rmdir /s /q node_modules`
-4. Reinstall: `npm install && npm run db:generate`
+2. `taskkill /F /IM node.exe /T`
+3. `rmdir /s /q node_modules && npm install && npm run db:generate`
 
-</details>
+**MinIO buckets missing** -- Open http://localhost:9001, create `imagenix-uploads` and `imagenix-exports` manually.
 
-<details>
-<summary><strong>MinIO bucket not found</strong></summary>
-
-The init container creates buckets automatically. If missing:
-
-1. Access MinIO Console: http://localhost:9001
-2. Login: `minioadmin` / `minioadmin123`
-3. Create buckets: `imagenix-uploads`, `imagenix-exports`
-
-</details>
-
----
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feature/amazing-feature`
-3. Commit changes: `git commit -m "Add amazing feature"`
-4. Push to branch: `git push origin feature/amazing-feature`
-5. Open a Pull Request
-
-### Development Guidelines
-
-- Follow the existing code style (ESLint + Prettier)
-- Write meaningful commit messages
-- Add tests for new features
-- Update documentation as needed
+**ML Service "503 Pipeline not loaded"** -- Models are loading. Wait 2-3 minutes or run `curl -X POST http://localhost:8000/models/load`.
 
 ---
 
 ## Roadmap
 
-- [ ] **Polygon Annotation** - Support for non-rectangular regions
-- [ ] **Semantic Segmentation** - Pixel-level labeling
-- [ ] **Team Collaboration** - Multi-user annotation with conflict resolution
-- [ ] **Generative Augmentation** - Stable Diffusion integration
-- [ ] **Active Learning** - Smart sample selection for labeling
-- [ ] **Cloud Deployment** - One-click AWS/GCP/Azure deploy
+- [x] Classical Augmentation (14 transforms with annotation preservation)
+- [x] Random Augmentation Pipeline (strength-based, seeded, training-ready)
+- [x] Generative Augmentation (Stable Diffusion + ControlNet)
+- [x] AI Auto-Annotation (Grounding DINO)
+- [x] Labeled Image Export (PNG/JPG with annotations drawn)
+- [x] Annotation Resizing (drag handles)
+- [x] Bulk Image Management (select, delete)
+- [x] Anti-Hallucination Validation
+- [x] Background Job Persistence (navigate freely during jobs)
+- [ ] Polygon Annotation
+- [ ] Semantic Segmentation
+- [ ] Team Collaboration
+- [ ] Active Learning
+- [ ] Cloud Deployment (AWS / GCP / Azure)
+- [ ] In-Platform Model Training
 
 ---
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) for details.
-
----
-
-<p align="center">
-  Built with love for the ML community
-</p>
+MIT License -- see [LICENSE](LICENSE) for details.

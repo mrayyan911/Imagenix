@@ -120,11 +120,30 @@ export const labelClassesApi = {
   list: (projectId: string) =>
     api.get<ApiResponse<{ classes: LabelClass[] }>>(`/projects/${projectId}/classes`),
 
+  listWithCounts: (projectId: string) =>
+    api.get<ApiResponse<{ classes: LabelClassWithCount[] }>>(
+      `/projects/${projectId}/classes?includeCounts=true`
+    ),
+
   create: (projectId: string, data: { name: string; colorHex?: string }) =>
     api.post<ApiResponse<{ classId: string }>>(`/projects/${projectId}/classes`, data),
 
-  delete: (projectId: string, classId: string) =>
-    api.delete(`/projects/${projectId}/classes/${classId}`),
+  delete: (projectId: string, classId: string, force?: boolean) =>
+    api.delete<ApiResponse<{ success: boolean; deletedAnnotations?: number }>>(
+      `/projects/${projectId}/classes/${classId}${force ? '?force=true' : ''}`
+    ),
+
+  deleteAll: (projectId: string) =>
+    api.delete<ApiResponse<{ deleted: number }>>(`/projects/${projectId}/classes`),
+
+  deleteAnnotationsFromImages: (
+    projectId: string,
+    data: { imageIds: string[]; labelClassIds?: string[] }
+  ) =>
+    api.post<ApiResponse<{ deleted: number; deletedClasses: number }>>(
+      `/projects/${projectId}/classes/annotations/delete-from-images`,
+      data
+    ),
 };
 
 // Images API
@@ -156,7 +175,12 @@ export const imagesApi = {
       data
     ),
 
-  delete: (id: string) => api.delete(`/images/${id}`),
+  delete: (id: string) => api.delete<ApiResponse<{ success: boolean }>>(`/images/${id}`),
+
+  bulkDelete: (datasetId: string, imageIds: string[]) =>
+    api.post<ApiResponse<{ deleted: number }>>(`/datasets/${datasetId}/images/bulk-delete`, {
+      imageIds,
+    }),
 };
 
 // Annotations API
@@ -182,7 +206,7 @@ export const annotationsApi = {
 export const jobsApi = {
   createAutoAnnotation: (
     datasetId: string,
-    data: { className: string; confidenceThreshold?: number }
+    data: { className: string; confidenceThreshold?: number; imageIds?: string[] }
   ) =>
     api.post<ApiResponse<{ jobId: string; status: string }>>(
       `/datasets/${datasetId}/jobs/auto-annotate`,
@@ -250,6 +274,21 @@ export const augmentationApi = {
       }>
     >(`/datasets/${datasetId}/augmentation/generative`, data),
 
+  createRandom: (
+    datasetId: string,
+    data: {
+      strength: 'low' | 'medium' | 'high';
+      seed?: string;
+      multiplier?: number;
+      imageIds?: string[];
+      preserveOriginals?: boolean;
+    }
+  ) =>
+    api.post<ApiResponse<{ jobId: string; status: string }>>(
+      `/datasets/${datasetId}/augmentation/random`,
+      data
+    ),
+
   preview: (
     imageId: string,
     transforms: { type: string; value?: number }[]
@@ -266,6 +305,25 @@ export const augmentationApi = {
         invalidAnnotationCount: number;
       }>
     >(`/images/${imageId}/augmentation/preview`, { transforms }),
+
+  previewRandom: (
+    imageId: string,
+    data: { strength: 'low' | 'medium' | 'high'; seed?: string }
+  ) =>
+    api.post<
+      ApiResponse<{
+        preview: string;
+        previewWidth: number;
+        previewHeight: number;
+        originalWidth: number;
+        originalHeight: number;
+        transforms: RandomTransform[];
+        seed: string;
+        annotations: TransformedAnnotationWithClass[];
+        validAnnotationCount: number;
+        invalidAnnotationCount: number;
+      }>
+    >(`/images/${imageId}/augmentation/random/preview`, data),
 };
 
 export interface AugmentationCapabilities {
@@ -283,6 +341,15 @@ export interface AugmentationCapabilities {
     available: boolean;
     variations: string[];
   };
+  random: {
+    enabled: boolean;
+    strengths: {
+      value: string;
+      name: string;
+      description: string;
+    }[];
+    features: string[];
+  };
 }
 
 export interface TransformedAnnotation {
@@ -293,6 +360,17 @@ export interface TransformedAnnotation {
   width: number;
   height: number;
   isValid: boolean;
+}
+
+export interface TransformedAnnotationWithClass extends TransformedAnnotation {
+  visibleArea: number;
+  labelClass?: LabelClass;
+}
+
+export interface RandomTransform {
+  type: string;
+  value?: number;
+  params?: Record<string, number>;
 }
 
 // Types
@@ -325,6 +403,10 @@ export interface LabelClass {
   name: string;
   colorHex: string;
   createdAt: string;
+}
+
+export interface LabelClassWithCount extends LabelClass {
+  annotationCount: number;
 }
 
 export interface Image {

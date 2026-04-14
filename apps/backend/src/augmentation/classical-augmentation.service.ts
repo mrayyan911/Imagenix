@@ -38,10 +38,16 @@ export class ClassicalAugmentationService {
     originalWidth: number,
     originalHeight: number
   ): Promise<AugmentationResult> {
-    let pipeline = sharp(imageBuffer);
     const transformsApplied: string[] = [];
+    
+    // Track current dimensions as transforms are applied
+    let currentWidth = originalWidth;
+    let currentHeight = originalHeight;
+    let currentBuffer = imageBuffer;
 
     for (const transform of transforms) {
+      let pipeline = sharp(currentBuffer);
+
       switch (transform.type) {
         case 'flip_horizontal':
           pipeline = pipeline.flop();
@@ -57,6 +63,10 @@ export class ClassicalAugmentationService {
           const degrees = transform.value || 90;
           pipeline = pipeline.rotate(degrees, { background: { r: 0, g: 0, b: 0, alpha: 0 } });
           transformsApplied.push(`rotate_${degrees}`);
+          // Update dimensions for 90/270 degree rotations
+          if (degrees === 90 || degrees === 270 || degrees === -90 || degrees === -270) {
+            [currentWidth, currentHeight] = [currentHeight, currentWidth];
+          }
           break;
 
         case 'brightness':
@@ -84,46 +94,70 @@ export class ClassicalAugmentationService {
           break;
 
         case 'noise':
-          // Add gaussian noise by overlaying random pixels
-          // Sharp doesn't have native noise, so we simulate with slight blur + sharpen
           pipeline = pipeline.sharpen({ sigma: transform.value || 1 });
           transformsApplied.push(`noise_${transform.value || 1}`);
           break;
 
         case 'scale':
           const scaleFactor = transform.value || 0.8;
-          const newWidth = Math.round(originalWidth * scaleFactor);
-          const newHeight = Math.round(originalHeight * scaleFactor);
-          pipeline = pipeline.resize(newWidth, newHeight);
+          const newScaleWidth = Math.max(1, Math.round(currentWidth * scaleFactor));
+          const newScaleHeight = Math.max(1, Math.round(currentHeight * scaleFactor));
+          pipeline = pipeline.resize(newScaleWidth, newScaleHeight);
+          currentWidth = newScaleWidth;
+          currentHeight = newScaleHeight;
           transformsApplied.push(`scale_${scaleFactor}`);
           break;
 
         case 'crop':
-          // Random crop - take 80% of image from random position
-          const cropPercent = transform.value || 0.8;
-          const cropWidth = Math.round(originalWidth * cropPercent);
-          const cropHeight = Math.round(originalHeight * cropPercent);
-          const maxLeft = originalWidth - cropWidth;
-          const maxTop = originalHeight - cropHeight;
-          const left = Math.floor(Math.random() * maxLeft);
-          const top = Math.floor(Math.random() * maxTop);
-          pipeline = pipeline.extract({ left, top, width: cropWidth, height: cropHeight });
-          transformsApplied.push(`crop_${cropPercent}`);
+          // Random crop - take specified percent of image from random position
+          const cropPercent = Math.min(0.95, Math.max(0.5, transform.value || 0.8));
+          const cropWidth = Math.max(1, Math.round(currentWidth * cropPercent));
+          const cropHeight = Math.max(1, Math.round(currentHeight * cropPercent));
+          
+          // Calculate max offsets, ensuring they're non-negative
+          const maxLeft = Math.max(0, currentWidth - cropWidth);
+          const maxTop = Math.max(0, currentHeight - cropHeight);
+          
+          // Random position within valid range
+          const left = maxLeft > 0 ? Math.floor(Math.random() * maxLeft) : 0;
+          const top = maxTop > 0 ? Math.floor(Math.random() * maxTop) : 0;
+          
+          // Ensure extract area is valid
+          const extractWidth = Math.min(cropWidth, currentWidth - left);
+          const extractHeight = Math.min(cropHeight, currentHeight - top);
+          
+          if (extractWidth > 0 && extractHeight > 0) {
+            pipeline = pipeline.extract({ 
+              left, 
+              top, 
+              width: extractWidth, 
+              height: extractHeight 
+            });
+            currentWidth = extractWidth;
+            currentHeight = extractHeight;
+            transformsApplied.push(`crop_${cropPercent}`);
+          }
           break;
+      }
+
+      // Get intermediate result to use for next transform
+      currentBuffer = await pipeline.toBuffer();
+      
+      // Update dimensions from actual output (handles rotation edge cases)
+      const intermediateMetadata = await sharp(currentBuffer).metadata();
+      if (intermediateMetadata.width && intermediateMetadata.height) {
+        currentWidth = intermediateMetadata.width;
+        currentHeight = intermediateMetadata.height;
       }
     }
 
-    // Get the result
-    const outputBuffer = await pipeline.toBuffer();
-    const metadata = await sharp(outputBuffer).metadata();
-
     // Calculate SHA256
-    const sha256 = crypto.createHash('sha256').update(outputBuffer).digest('hex');
+    const sha256 = crypto.createHash('sha256').update(currentBuffer).digest('hex');
 
     return {
-      buffer: outputBuffer,
-      width: metadata.width || originalWidth,
-      height: metadata.height || originalHeight,
+      buffer: currentBuffer,
+      width: currentWidth,
+      height: currentHeight,
       sha256,
       transformsApplied,
     };
@@ -226,7 +260,7 @@ export class ClassicalAugmentationService {
     transforms: { type: string; value?: number }[],
     originalWidth: number,
     originalHeight: number
-  ): Promise<{ previewBuffer: Buffer; previewWidth: number; previewHeight: number }> {
+  ): Promise<{ previewBuffer: Buffer; previewWidth: number; previewHeight: number; actualWidth: number; actualHeight: number }> {
     const result = await this.augmentImage(imageBuffer, transforms, originalWidth, originalHeight);
 
     // Create a smaller preview (max 400px)
@@ -236,12 +270,21 @@ export class ClassicalAugmentationService {
 
     if (result.width > maxDim || result.height > maxDim) {
       const ratio = Math.min(maxDim / result.width, maxDim / result.height);
-      previewWidth = Math.round(result.width * ratio);
-      previewHeight = Math.round(result.height * ratio);
+      previewWidth = Math.max(1, Math.round(result.width * ratio));
+      previewHeight = Math.max(1, Math.round(result.height * ratio));
     }
 
-    const previewBuffer = await sharp(result.buffer).resize(previewWidth, previewHeight).jpeg({ quality: 80 }).toBuffer();
+    const previewBuffer = await sharp(result.buffer)
+      .resize(previewWidth, previewHeight)
+      .jpeg({ quality: 80 })
+      .toBuffer();
 
-    return { previewBuffer, previewWidth, previewHeight };
+    return { 
+      previewBuffer, 
+      previewWidth, 
+      previewHeight,
+      actualWidth: result.width,
+      actualHeight: result.height,
+    };
   }
 }

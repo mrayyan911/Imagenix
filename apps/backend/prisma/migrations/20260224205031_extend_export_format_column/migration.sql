@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "exports" ALTER COLUMN "format" SET DATA TYPE VARCHAR(20);

@@ -5,9 +5,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
         {/* Logo */}
         <div className="flex justify-center mb-8">
           <div className="flex items-center gap-2">
-            <div className="h-10 w-10 rounded-lg bg-primary-500 flex items-center justify-center">
-              <span className="text-white font-bold">IX</span>
-            </div>
+            <img src="/logo.png" alt="Imagenix" className="h-10 w-10 rounded-lg object-contain" />
             <span className="text-2xl font-semibold text-neutral-900">Imagenix</span>
           </div>
         </div>

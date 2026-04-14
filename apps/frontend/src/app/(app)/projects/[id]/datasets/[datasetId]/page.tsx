@@ -1,11 +1,13 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { Progress } from '@/components/ui/progress';
+import { LabelClassesManager, type LabelClassesManagerRef } from '@/components/label-classes-manager';
 import {
   datasetsApi,
   imagesApi,
@@ -28,7 +30,11 @@ import {
   CheckCircle,
   AlertCircle,
   Wand2,
+  CheckSquare,
+  Square,
+  Trash2,
 } from 'lucide-react';
+import { useDatasetStore } from '@/stores/dataset-store';
 
 export default function DatasetDetailPage() {
   const params = useParams();
@@ -37,6 +43,23 @@ export default function DatasetDetailPage() {
   const projectId = params.id as string;
   const datasetId = params.datasetId as string;
 
+  const labelClassesManagerRef = useRef<LabelClassesManagerRef>(null);
+
+  // Use global store for selected images and job state (persists across navigation)
+  const {
+    getSelectedImages,
+    toggleImage,
+    selectAll,
+    deselectAll,
+    getJob,
+    startJob,
+    startPolling,
+    clearJob,
+  } = useDatasetStore();
+
+  const selectedImageIds = getSelectedImages(datasetId);
+  const activeJob = getJob(datasetId);
+
   const [dataset, setDataset] = useState<Dataset | null>(null);
   const [images, setImages] = useState<Image[]>([]);
   const [labelClasses, setLabelClasses] = useState<LabelClass[]>([]);
@@ -44,9 +67,17 @@ export default function DatasetDetailPage() {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [autoAnnotateClass, setAutoAnnotateClass] = useState('');
-  const [isAutoAnnotating, setIsAutoAnnotating] = useState(false);
   const [exportFormat, setExportFormat] = useState('coco');
   const [isExporting, setIsExporting] = useState(false);
+  const [isDeletingImages, setIsDeletingImages] = useState(false);
+  const [showDeleteImagesConfirm, setShowDeleteImagesConfirm] = useState(false);
+
+  // Derived state from active job
+  const isAutoAnnotating = activeJob?.jobType === 'auto-annotation' && 
+    (activeJob.status === 'queued' || activeJob.status === 'running');
+  const annotationProgress = activeJob?.progress || 0;
+  const annotationImagesTotal = activeJob?.totalImages || 0;
+  const annotationStartTime = activeJob?.startTime || null;
 
   const loadData = useCallback(async () => {
     try {
@@ -72,6 +103,32 @@ export default function DatasetDetailPage() {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  // Resume polling if there's an active job (e.g., user navigated away and came back)
+  useEffect(() => {
+    if (activeJob?.jobId && (activeJob.status === 'queued' || activeJob.status === 'running')) {
+      startPolling(datasetId, activeJob.jobId, () => {
+        toast({
+          title: 'Auto-annotation complete',
+          description: 'Images have been annotated.',
+          variant: 'success',
+        });
+        loadData();
+        labelClassesManagerRef.current?.refresh();
+      });
+    }
+  }, [datasetId]); // Only run on mount/datasetId change
+
+  // Show toast when job fails
+  useEffect(() => {
+    if (activeJob?.status === 'failed') {
+      toast({
+        title: 'Auto-annotation failed',
+        description: activeJob.errorMessage || 'Unknown error',
+        variant: 'destructive',
+      });
+    }
+  }, [activeJob?.status, activeJob?.errorMessage, toast]);
 
   const uploadFile = async (file: File) => {
     // Get upload URL
@@ -148,6 +205,49 @@ export default function DatasetDetailPage() {
     maxSize: 20 * 1024 * 1024, // 20MB
   });
 
+  const toggleImageSelection = (imageId: string) => {
+    toggleImage(datasetId, imageId);
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedImageIds.size === images.length) {
+      deselectAll(datasetId);
+    } else {
+      selectAll(datasetId, images.map((img) => img.id));
+    }
+  };
+
+  const handleDeleteSelectedImages = async () => {
+    if (selectedImageIds.size === 0) {
+      return;
+    }
+
+    setIsDeletingImages(true);
+    try {
+      const response = await imagesApi.bulkDelete(datasetId, Array.from(selectedImageIds));
+      const deleted = response.data.data?.deleted || 0;
+
+      toast({
+        title: 'Success',
+        description: `Deleted ${deleted} image${deleted !== 1 ? 's' : ''}`,
+        variant: 'success',
+      });
+
+      deselectAll(datasetId);
+      setShowDeleteImagesConfirm(false);
+      await loadData();
+      labelClassesManagerRef.current?.refresh();
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: error.response?.data?.error?.message || 'Failed to delete images',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsDeletingImages(false);
+    }
+  };
+
   const handleAutoAnnotate = async () => {
     if (!autoAnnotateClass.trim()) {
       toast({
@@ -158,22 +258,40 @@ export default function DatasetDetailPage() {
       return;
     }
 
-    setIsAutoAnnotating(true);
+    if (selectedImageIds.size === 0) {
+      toast({
+        title: 'Error',
+        description: 'Please select at least one image to annotate',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     try {
       const response = await jobsApi.createAutoAnnotation(datasetId, {
         className: autoAnnotateClass,
         confidenceThreshold: 0.35,
+        imageIds: Array.from(selectedImageIds),
       });
 
       toast({
         title: 'Auto-annotation started',
-        description: 'Processing images in background...',
+        description: `Processing ${selectedImageIds.size} images...`,
       });
 
-      // Poll for job completion
       const jobId = response.data.data?.jobId;
       if (jobId) {
-        pollJobStatus(jobId);
+        // Start job in global store (persists across navigation)
+        startJob(datasetId, jobId, 'auto-annotation', selectedImageIds.size);
+        startPolling(datasetId, jobId, () => {
+          toast({
+            title: 'Auto-annotation complete',
+            description: 'Images have been annotated.',
+            variant: 'success',
+          });
+          loadData();
+          labelClassesManagerRef.current?.refresh();
+        });
       }
     } catch (error) {
       toast({
@@ -181,35 +299,16 @@ export default function DatasetDetailPage() {
         description: 'Failed to start auto-annotation',
         variant: 'destructive',
       });
-    } finally {
-      setIsAutoAnnotating(false);
     }
   };
 
-  const pollJobStatus = async (jobId: string) => {
-    const poll = async () => {
-      const response = await jobsApi.getStatus(jobId);
-      const job = response.data.data;
-
-      if (job?.status === 'succeeded') {
-        toast({
-          title: 'Auto-annotation complete',
-          description: 'Images have been annotated.',
-          variant: 'success',
-        });
-        loadData();
-      } else if (job?.status === 'failed') {
-        toast({
-          title: 'Auto-annotation failed',
-          description: job.errorMessage || 'Unknown error',
-          variant: 'destructive',
-        });
-      } else if (job?.status === 'running' || job?.status === 'queued') {
-        setTimeout(poll, 2000);
-      }
-    };
-
-    poll();
+  const getEstimatedTime = (progress: number, startTime: number | null): string | undefined => {
+    if (!startTime || progress <= 0 || progress >= 100) return undefined;
+    const elapsed = (Date.now() - startTime) / 1000;
+    const total = elapsed / (progress / 100);
+    const remaining = Math.max(0, Math.ceil(total - elapsed));
+    if (remaining < 60) return `~${remaining}s remaining`;
+    return `~${Math.ceil(remaining / 60)}min remaining`;
   };
 
   const handleExport = async () => {
@@ -349,7 +448,62 @@ export default function DatasetDetailPage() {
             {/* Images Grid */}
             <Card>
               <CardHeader>
-                <CardTitle>Images</CardTitle>
+                <div className="flex items-center justify-between">
+                  <CardTitle>Images</CardTitle>
+                  {images.length > 0 && (
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm text-neutral-500">
+                        {selectedImageIds.size} of {images.length} selected
+                      </span>
+                      {selectedImageIds.size > 0 && (
+                        <>
+                          {!showDeleteImagesConfirm ? (
+                            <button
+                              type="button"
+                              onClick={() => setShowDeleteImagesConfirm(true)}
+                              className="text-sm text-red-600 hover:text-red-800 font-medium flex items-center gap-1"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                              Delete
+                            </button>
+                          ) : (
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm text-red-600">Delete {selectedImageIds.size}?</span>
+                              <button
+                                type="button"
+                                onClick={() => setShowDeleteImagesConfirm(false)}
+                                className="text-sm text-neutral-600 hover:text-neutral-800 font-medium"
+                                disabled={isDeletingImages}
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                type="button"
+                                onClick={handleDeleteSelectedImages}
+                                className="text-sm text-red-600 hover:text-red-800 font-medium flex items-center gap-1"
+                                disabled={isDeletingImages}
+                              >
+                                {isDeletingImages ? (
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                ) : (
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                )}
+                                Confirm
+                              </button>
+                            </div>
+                          )}
+                        </>
+                      )}
+                      <button
+                        type="button"
+                        onClick={toggleSelectAll}
+                        className="text-sm text-primary-600 hover:text-primary-800 font-medium"
+                      >
+                        {selectedImageIds.size === images.length ? 'Deselect All' : 'Select All'}
+                      </button>
+                    </div>
+                  )}
+                </div>
               </CardHeader>
               <CardContent>
                 {images.length === 0 ? (
@@ -359,36 +513,66 @@ export default function DatasetDetailPage() {
                   </div>
                 ) : (
                   <div className="grid gap-4 grid-cols-2 sm:grid-cols-3 md:grid-cols-4">
-                    {images.map((image) => (
-                      <Link
-                        key={image.id}
-                        href={`/projects/${projectId}/datasets/${datasetId}/annotate/${image.id}`}
-                        className="group relative aspect-square rounded-lg overflow-hidden border border-neutral-200 hover:border-primary-400 transition-colors"
-                      >
-                        {image.url ? (
-                          <img
-                            src={image.url}
-                            alt={image.fileName}
-                            className="w-full h-full object-cover"
-                          />
-                        ) : (
-                          <div className="w-full h-full bg-neutral-100 flex items-center justify-center">
-                            <ImageIcon className="h-8 w-8 text-neutral-300" />
-                          </div>
-                        )}
-                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors" />
-                        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-2">
-                          <div className="flex items-center justify-between text-white text-xs">
-                            <span className="truncate">{image.fileName}</span>
-                            {(image.annotationCount || 0) > 0 && (
-                              <span className="bg-primary-500 px-1.5 py-0.5 rounded">
-                                {image.annotationCount}
-                              </span>
+                    {images.map((image) => {
+                      const isSelected = selectedImageIds.has(image.id);
+                      return (
+                        <div
+                          key={image.id}
+                          className={`group relative aspect-square rounded-lg overflow-hidden border-2 transition-all ${
+                            isSelected
+                              ? 'border-primary-500 ring-2 ring-primary-200'
+                              : 'border-neutral-200 hover:border-neutral-400'
+                          }`}
+                        >
+                          <Link
+                            href={`/projects/${projectId}/datasets/${datasetId}/annotate/${image.id}`}
+                            className="block w-full h-full"
+                          >
+                            {image.url ? (
+                              <img
+                                src={image.url}
+                                alt={image.fileName}
+                                className="w-full h-full object-cover"
+                              />
+                            ) : (
+                              <div className="w-full h-full bg-neutral-100 flex items-center justify-center">
+                                <ImageIcon className="h-8 w-8 text-neutral-300" />
+                              </div>
                             )}
+                            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
+                          </Link>
+
+                          {/* Selection checkbox — top-left corner */}
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              toggleImageSelection(image.id);
+                            }}
+                            className="absolute top-1.5 left-1.5 z-10 p-0.5 rounded bg-black/30 hover:bg-black/50 transition-colors"
+                          >
+                            {isSelected ? (
+                              <CheckSquare className="h-5 w-5 text-primary-400 drop-shadow" />
+                            ) : (
+                              <Square className="h-5 w-5 text-white/80 drop-shadow" />
+                            )}
+                          </button>
+
+                          {/* Bottom info bar */}
+                          <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-2 pointer-events-none">
+                            <div className="flex items-center justify-between text-white text-xs">
+                              <span className="truncate">{image.fileName}</span>
+                              {(image.annotationCount || 0) > 0 && (
+                                <span className="bg-primary-500 px-1.5 py-0.5 rounded">
+                                  {image.annotationCount}
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </div>
-                      </Link>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </CardContent>
@@ -408,26 +592,51 @@ export default function DatasetDetailPage() {
               <CardContent className="space-y-4">
                 <div>
                   <Input
-                    placeholder="Class name (e.g., person)"
+                    placeholder="Class name (e.g., car, person)"
                     value={autoAnnotateClass}
                     onChange={(e) => setAutoAnnotateClass(e.target.value)}
                   />
                 </div>
+
+                {selectedImageIds.size > 0 && !isAutoAnnotating && (
+                  <p className="text-sm text-primary-600 font-medium">
+                    {selectedImageIds.size} image{selectedImageIds.size > 1 ? 's' : ''} selected
+                  </p>
+                )}
+
+                {/* Progress bar — visible while job is running */}
+                {isAutoAnnotating && (
+                  <Progress
+                    value={annotationProgress}
+                    label={(() => {
+                      const done = Math.round((annotationProgress / 100) * annotationImagesTotal);
+                      return `${done} of ${annotationImagesTotal} images annotated`;
+                    })()}
+                    estimatedTime={getEstimatedTime(annotationProgress, annotationStartTime)}
+                  />
+                )}
+
                 <Button
                   className="w-full"
                   onClick={handleAutoAnnotate}
-                  disabled={isAutoAnnotating || images.length === 0}
+                  disabled={isAutoAnnotating || selectedImageIds.size === 0}
                 >
                   {isAutoAnnotating ? (
                     <Loader2 className="h-4 w-4 animate-spin mr-2" />
                   ) : (
                     <Sparkles className="h-4 w-4 mr-2" />
                   )}
-                  Run Auto-Annotation
+                  {isAutoAnnotating
+                    ? 'Annotating...'
+                    : selectedImageIds.size > 0
+                      ? `Annotate ${selectedImageIds.size} Image${selectedImageIds.size > 1 ? 's' : ''}`
+                      : 'Select Images to Annotate'}
                 </Button>
-                <p className="text-xs text-neutral-500">
-                  AI will detect objects matching the class name and create draft annotations.
-                </p>
+                {!isAutoAnnotating && (
+                  <p className="text-xs text-neutral-500">
+                    Select images from the grid, enter a class name, and run AI detection.
+                  </p>
+                )}
               </CardContent>
             </Card>
 
@@ -440,15 +649,30 @@ export default function DatasetDetailPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <select
-                  className="w-full h-10 px-3 rounded-md border border-neutral-300 bg-white text-sm"
-                  value={exportFormat}
-                  onChange={(e) => setExportFormat(e.target.value)}
-                >
-                  <option value="coco">COCO Format</option>
-                  <option value="yolo">YOLO Format</option>
-                  <option value="voc">Pascal VOC Format</option>
-                </select>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-neutral-700">Format</label>
+                  <select
+                    className="w-full h-10 px-3 rounded-md border border-neutral-300 bg-white text-sm"
+                    value={exportFormat}
+                    onChange={(e) => setExportFormat(e.target.value)}
+                  >
+                    <optgroup label="For Model Training">
+                      <option value="coco">COCO Format</option>
+                      <option value="yolo">YOLO Format</option>
+                      <option value="voc">Pascal VOC Format</option>
+                    </optgroup>
+                    <optgroup label="Labeled Images (Visual)">
+                      <option value="labeled_jpg">JPG with Labels (Smaller)</option>
+                      <option value="labeled_png">PNG with Labels (Lossless)</option>
+                    </optgroup>
+                  </select>
+                  {(exportFormat === 'labeled_jpg' || exportFormat === 'labeled_png') && (
+                    <p className="text-xs text-neutral-500">
+                      Downloads a ZIP with images that have bounding boxes and labels drawn on them.
+                      Best for visual review, not model training.
+                    </p>
+                  )}
+                </div>
                 <Button
                   className="w-full"
                   variant="outline"
@@ -460,10 +684,18 @@ export default function DatasetDetailPage() {
                   ) : (
                     <Download className="h-4 w-4 mr-2" />
                   )}
-                  Export
+                  {exportFormat.startsWith('labeled_') ? 'Download Labeled Images' : 'Export'}
                 </Button>
               </CardContent>
             </Card>
+
+            {/* Label Classes Manager */}
+            <LabelClassesManager
+              ref={labelClassesManagerRef}
+              projectId={projectId}
+              selectedImageIds={selectedImageIds}
+              onAnnotationsDeleted={loadData}
+            />
           </div>
         </div>
       </div>

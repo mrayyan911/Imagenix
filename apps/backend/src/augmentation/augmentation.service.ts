@@ -10,7 +10,12 @@ import { StorageService } from '../storage/storage.service';
 import { DatasetsService } from '../datasets/datasets.service';
 import { ClassicalAugmentationService } from './classical-augmentation.service';
 import { GenerativeAugmentationService } from './generative-augmentation.service';
-import { CreateClassicalAugmentationDto, CreateGenerativeAugmentationDto } from './dto/create-augmentation-job.dto';
+import { RandomAugmentationService } from './random-augmentation.service';
+import { 
+  CreateClassicalAugmentationDto, 
+  CreateGenerativeAugmentationDto,
+  CreateRandomAugmentationDto,
+} from './dto/create-augmentation-job.dto';
 
 @Injectable()
 export class AugmentationService {
@@ -24,6 +29,7 @@ export class AugmentationService {
     private datasetsService: DatasetsService,
     private classicalAugmentation: ClassicalAugmentationService,
     private generativeAugmentation: GenerativeAugmentationService,
+    private randomAugmentation: RandomAugmentationService,
     private configService: ConfigService
   ) {
     this.classicalEnabled = this.configService.get<string>('FEATURE_AUGMENTATION') === 'true';
@@ -54,6 +60,20 @@ export class AugmentationService {
         enabled: this.generativeEnabled,
         available: this.generativeAugmentation.isAvailable(),
         variations: this.generativeAugmentation.getAvailableVariations(),
+      },
+      random: {
+        enabled: this.classicalEnabled,
+        strengths: [
+          { value: 'low', name: 'Low', description: '1-2 light transforms' },
+          { value: 'medium', name: 'Medium', description: '2-4 moderate transforms' },
+          { value: 'high', name: 'High', description: '3-6 strong transforms' },
+        ],
+        features: [
+          'Automatic random transform selection',
+          'Per-image unique combinations',
+          'Reproducible with seed',
+          'Annotation-safe transformations',
+        ],
       },
     };
   }
@@ -156,6 +176,127 @@ export class AugmentationService {
   }
 
   /**
+   * Create random augmentation job
+   */
+  async createRandomAugmentationJob(
+    datasetId: string,
+    userId: string,
+    dto: CreateRandomAugmentationDto
+  ) {
+    if (!this.classicalEnabled) {
+      throw new BadRequestException('Augmentation is not enabled');
+    }
+
+    await this.datasetsService.verifyOwnership(datasetId, userId);
+
+    const job = await this.prisma.job.create({
+      data: {
+        userId,
+        datasetId,
+        jobType: 'random_augmentation',
+        status: 'queued',
+        progress: 0,
+        metadata: {
+          strength: dto.strength,
+          seed: dto.seed || null,
+          multiplier: dto.multiplier || 1,
+          imageIds: dto.imageIds || [],
+          preserveOriginals: dto.preserveOriginals ?? true,
+        } as object,
+      },
+    });
+
+    this.processRandomAugmentation(job.id).catch((err) => {
+      console.error(`[Augmentation] Random job ${job.id} failed:`, err);
+    });
+
+    return { jobId: job.id, status: 'queued' };
+  }
+
+  /**
+   * Preview random augmentation on a single image
+   */
+  async previewRandomAugmentation(
+    imageId: string,
+    userId: string,
+    strength: 'low' | 'medium' | 'high',
+    seed?: string
+  ) {
+    const image = await this.prisma.image.findUnique({
+      where: { id: imageId },
+      include: {
+        dataset: {
+          include: {
+            project: { select: { userId: true } },
+          },
+        },
+        annotations: {
+          include: { labelClass: true },
+        },
+      },
+    });
+
+    if (!image) {
+      throw new NotFoundException('Image not found');
+    }
+
+    if (image.dataset.project.userId !== userId) {
+      throw new BadRequestException('Access denied');
+    }
+
+    const imageBuffer = await this.storageService.downloadFile(image.fileKey);
+    const imageSeed = this.randomAugmentation.generateImageSeed(seed, imageId);
+
+    const preview = await this.randomAugmentation.generatePreview(
+      imageBuffer,
+      strength,
+      imageSeed,
+      image.width,
+      image.height
+    );
+
+    const transformedAnnotations = this.randomAugmentation.transformAnnotations(
+      image.annotations.map((a) => ({
+        id: a.id,
+        labelClassId: a.labelClassId,
+        x: a.x,
+        y: a.y,
+        width: a.width,
+        height: a.height,
+      })),
+      preview.transforms,
+      image.width,
+      image.height,
+      preview.actualWidth,
+      preview.actualHeight
+    );
+
+    const scaleX = preview.previewWidth / preview.actualWidth;
+    const scaleY = preview.previewHeight / preview.actualHeight;
+    const scaledAnnotations = transformedAnnotations.map((a) => ({
+      ...a,
+      x: Math.round(a.x * scaleX),
+      y: Math.round(a.y * scaleY),
+      width: Math.round(a.width * scaleX),
+      height: Math.round(a.height * scaleY),
+      labelClass: image.annotations.find((ann) => ann.id === a.originalId)?.labelClass,
+    }));
+
+    return {
+      preview: preview.previewBuffer.toString('base64'),
+      previewWidth: preview.previewWidth,
+      previewHeight: preview.previewHeight,
+      originalWidth: image.width,
+      originalHeight: image.height,
+      transforms: preview.transforms,
+      seed: preview.seed,
+      annotations: scaledAnnotations,
+      validAnnotationCount: scaledAnnotations.filter((a) => a.isValid).length,
+      invalidAnnotationCount: scaledAnnotations.filter((a) => !a.isValid).length,
+    };
+  }
+
+  /**
    * Preview classical augmentation on a single image
    */
   async previewClassicalAugmentation(
@@ -197,7 +338,7 @@ export class AugmentationService {
       image.height
     );
 
-    // Transform annotations for preview
+    // Transform annotations for preview using actual transformed dimensions
     const transformedAnnotations = this.classicalAugmentation.transformAnnotations(
       image.annotations.map((a) => ({
         id: a.id,
@@ -210,9 +351,20 @@ export class AugmentationService {
       transforms,
       image.width,
       image.height,
-      preview.previewWidth,
-      preview.previewHeight
+      preview.actualWidth,
+      preview.actualHeight
     );
+
+    // Scale annotations to preview size
+    const scaleX = preview.previewWidth / preview.actualWidth;
+    const scaleY = preview.previewHeight / preview.actualHeight;
+    const scaledAnnotations = transformedAnnotations.map((a) => ({
+      ...a,
+      x: Math.round(a.x * scaleX),
+      y: Math.round(a.y * scaleY),
+      width: Math.round(a.width * scaleX),
+      height: Math.round(a.height * scaleY),
+    }));
 
     return {
       preview: preview.previewBuffer.toString('base64'),
@@ -220,9 +372,9 @@ export class AugmentationService {
       previewHeight: preview.previewHeight,
       originalWidth: image.width,
       originalHeight: image.height,
-      annotations: transformedAnnotations,
-      validAnnotationCount: transformedAnnotations.filter((a) => a.isValid).length,
-      invalidAnnotationCount: transformedAnnotations.filter((a) => !a.isValid).length,
+      annotations: scaledAnnotations,
+      validAnnotationCount: scaledAnnotations.filter((a) => a.isValid).length,
+      invalidAnnotationCount: scaledAnnotations.filter((a) => !a.isValid).length,
     };
   }
 
@@ -255,20 +407,22 @@ export class AugmentationService {
 
       const images = await this.prisma.image.findMany({
         where: whereClause,
-        include: {
-          annotations: true,
-        },
+        include: { annotations: true },
       });
 
       const totalOperations = images.length * metadata.multiplier;
       let completed = 0;
+      let lastReportedProgress = -1;
 
-      for (const image of images) {
-        // Download original image
+      const CONCURRENCY = 3;
+
+      const processImage = async (image: typeof images[0]) => {
         const imageBuffer = await this.storageService.downloadFile(image.fileKey);
 
-        for (let i = 0; i < metadata.multiplier; i++) {
-          // Apply augmentation
+        const variants = Array.from({ length: metadata.multiplier }, (_, i) => i);
+
+        // Process all multiplier variants for this image in parallel
+        await Promise.all(variants.map(async (i) => {
           const result = await this.classicalAugmentation.augmentImage(
             imageBuffer,
             metadata.transforms,
@@ -276,30 +430,27 @@ export class AugmentationService {
             image.height
           );
 
-          // Upload augmented image
-          const fileKey = this.storageService.generateFileKey(
-            job.datasetId,
-            `aug_${i}_${image.fileName}`
-          );
-          await this.storageService.uploadFile(fileKey, result.buffer, image.mimeType);
+          const fileName = `aug_${i}_${image.fileName}`;
+          const fileKey = this.storageService.generateFileKey(job.datasetId, fileName);
 
-          // Create image record
-          const newImage = await this.prisma.image.create({
-            data: {
-              datasetId: job.datasetId,
-              fileKey,
-              fileName: `aug_${i}_${image.fileName}`,
-              mimeType: image.mimeType,
-              width: result.width,
-              height: result.height,
-              sha256: result.sha256,
-              isSynthetic: true,
-              syntheticSource: 'classical_augmentation',
-            },
-          });
+          const [newImage] = await Promise.all([
+            this.prisma.image.create({
+              data: {
+                datasetId: job.datasetId,
+                fileKey,
+                fileName,
+                mimeType: image.mimeType,
+                width: result.width,
+                height: result.height,
+                sha256: result.sha256,
+                isSynthetic: true,
+                syntheticSource: 'classical_augmentation',
+              },
+            }),
+            this.storageService.uploadFile(fileKey, result.buffer, image.mimeType),
+          ]);
 
-          // Transform and create annotations
-          const transformedAnnotations = this.classicalAugmentation.transformAnnotations(
+          const validAnnotations = this.classicalAugmentation.transformAnnotations(
             image.annotations.map((a) => ({
               id: a.id,
               labelClassId: a.labelClassId,
@@ -313,31 +464,36 @@ export class AugmentationService {
             image.height,
             result.width,
             result.height
-          );
+          ).filter((a) => a.isValid);
 
-          // Save valid annotations
-          for (const ann of transformedAnnotations.filter((a) => a.isValid)) {
-            await this.prisma.annotation.create({
-              data: {
+          if (validAnnotations.length > 0) {
+            await this.prisma.annotation.createMany({
+              data: validAnnotations.map((ann) => ({
                 imageId: newImage.id,
                 labelClassId: ann.labelClassId,
                 x: ann.x,
                 y: ann.y,
                 width: ann.width,
                 height: ann.height,
-                source: 'augmentation',
+                source: 'auto',
                 status: 'approved',
-              },
+              })),
             });
           }
 
           completed++;
           const progress = Math.round((completed / totalOperations) * 100);
-          await this.prisma.job.update({
-            where: { id: jobId },
-            data: { progress },
-          });
-        }
+          if (progress !== lastReportedProgress) {
+            lastReportedProgress = progress;
+            await this.prisma.job.update({ where: { id: jobId }, data: { progress } });
+          }
+        }));
+      };
+
+      // Process images in parallel batches
+      for (let i = 0; i < images.length; i += CONCURRENCY) {
+        const batch = images.slice(i, i + CONCURRENCY);
+        await Promise.all(batch.map(processImage));
       }
 
       // Mark job as succeeded
@@ -366,7 +522,12 @@ export class AugmentationService {
   }
 
   /**
-   * Process generative augmentation job
+   * Process generative augmentation job.
+   *
+   * For each source image × quantity, calls the GenerativeAugmentationService
+   * which in turn contacts the ML microservice (RunPod) or Replicate.
+   * Each result is validated for hallucination; retries happen automatically
+   * inside the service layer.
    */
   private async processGenerativeAugmentation(jobId: string) {
     await this.prisma.job.update({
@@ -385,29 +546,73 @@ export class AugmentationService {
         imageIds: string[];
       };
 
-      // Get images
+      // Get images to augment
       const whereClause: any = { datasetId: job.datasetId };
       if (metadata.imageIds.length > 0) {
         whereClause.id = { in: metadata.imageIds };
       }
 
       const images = await this.prisma.image.findMany({ where: whereClause });
+      const totalOperations = images.length * metadata.quantity;
+      let completed = 0;
 
       for (const image of images) {
         const imageBuffer = await this.storageService.downloadFile(image.fileKey);
 
         for (let i = 0; i < metadata.quantity; i++) {
-          // This will throw an error with instructions since it's not yet implemented
           const result = await this.generativeAugmentation.generateVariation(
             imageBuffer,
             metadata.variationType,
             metadata.prompt,
             image.width,
-            image.height
+            image.height,
           );
 
-          // If we reach here (future implementation), save the generated image
-          // ... similar to classical augmentation
+          // Upload generated image to storage
+          const fileKey = this.storageService.generateFileKey(
+            job.datasetId,
+            `gen_${metadata.variationType}_${i}_${image.fileName}`,
+          );
+          await this.storageService.uploadFile(fileKey, result.buffer, 'image/png');
+
+          // Create image record — mark as synthetic with generation metadata
+          try {
+            await this.prisma.image.create({
+              data: {
+                datasetId: job.datasetId,
+                fileKey,
+                fileName: `gen_${metadata.variationType}_${i}_${image.fileName}`,
+                mimeType: 'image/png',
+                width: result.width,
+                height: result.height,
+                sha256: result.sha256,
+                isSynthetic: true,
+                syntheticSource: `generative_${metadata.variationType}`,
+              },
+            });
+          } catch (dbErr: any) {
+            if (dbErr?.code === 'P2002') {
+              // Duplicate sha256 — skip this image (Replicate returned an identical result)
+              console.warn(
+                `[Augmentation] Skipping duplicate image (same sha256 already exists in dataset): iteration=${i}`,
+              );
+              continue;
+            }
+            throw dbErr;
+          }
+
+          completed++;
+          const progress = Math.round((completed / totalOperations) * 100);
+          await this.prisma.job.update({
+            where: { id: jobId },
+            data: { progress },
+          });
+
+          console.log(
+            `[Augmentation] Generative job ${jobId}: ${completed}/${totalOperations} — ` +
+            `validated=${result.validated}, similarity=${result.similarityScore}, ` +
+            `attempts=${result.attempts}`,
+          );
         }
       }
 
@@ -415,6 +620,11 @@ export class AugmentationService {
         where: { id: jobId },
         data: { status: 'succeeded', progress: 100, finishedAt: new Date() },
       });
+
+      console.log(
+        `[Augmentation] Generative job ${jobId} completed: ` +
+        `${totalOperations} images generated`,
+      );
     } catch (error) {
       await this.prisma.job.update({
         where: { id: jobId },
@@ -425,6 +635,133 @@ export class AugmentationService {
           finishedAt: new Date(),
         },
       });
+      console.error(`[Augmentation] Generative job ${jobId} failed:`, error);
+    }
+  }
+
+  /**
+   * Process random augmentation job
+   */
+  private async processRandomAugmentation(jobId: string) {
+    await this.prisma.job.update({
+      where: { id: jobId },
+      data: { status: 'running', startedAt: new Date() },
+    });
+
+    try {
+      const job = await this.prisma.job.findUnique({ where: { id: jobId } });
+      if (!job) return;
+
+      const metadata = job.metadata as {
+        strength: 'low' | 'medium' | 'high';
+        seed: string | null;
+        multiplier: number;
+        imageIds: string[];
+        preserveOriginals: boolean;
+      };
+
+      const whereClause: any = { datasetId: job.datasetId };
+      if (metadata.imageIds.length > 0) {
+        whereClause.id = { in: metadata.imageIds };
+      }
+
+      const images = await this.prisma.image.findMany({
+        where: whereClause,
+      });
+
+      const totalOperations = images.length * metadata.multiplier;
+      let completed = 0;
+      let totalCreated = 0;
+      let lastReportedProgress = -1;
+
+      const CONCURRENCY = 3;
+      const ext = (fileName: string) => fileName.match(/\.[^/.]+$/)?.[0] || '.jpg';
+      const stem = (fileName: string) => fileName.replace(/\.[^/.]+$/, '');
+
+      const processImage = async (image: typeof images[0]) => {
+        const imageBuffer = await this.storageService.downloadFile(image.fileKey);
+        const variants = Array.from({ length: metadata.multiplier }, (_, i) => i);
+
+        await Promise.all(variants.map(async (i) => {
+          const imageSeed = this.randomAugmentation.generateImageSeed(
+            metadata.seed || undefined,
+            `${image.id}-${i}`
+          );
+
+          const transforms = this.randomAugmentation.selectRandomTransforms(
+            metadata.strength,
+            imageSeed,
+            image.width,
+            image.height
+          );
+
+          const result = await this.randomAugmentation.applyRandomAugmentation(
+            imageBuffer,
+            transforms,
+            image.width,
+            image.height
+          );
+
+          const fileName = `${stem(image.fileName)}_aug_${String(i).padStart(3, '0')}${ext(image.fileName)}`;
+          const fileKey = this.storageService.generateFileKey(job.datasetId, fileName);
+
+          await Promise.all([
+            this.prisma.image.create({
+              data: {
+                datasetId: job.datasetId,
+                fileKey,
+                fileName,
+                mimeType: image.mimeType,
+                width: result.width,
+                height: result.height,
+                sha256: result.sha256,
+                isSynthetic: true,
+                syntheticSource: 'random_augmentation',
+              },
+            }),
+            this.storageService.uploadFile(fileKey, result.buffer, image.mimeType),
+          ]);
+
+          totalCreated++;
+          completed++;
+          const progress = Math.round((completed / totalOperations) * 100);
+          if (progress !== lastReportedProgress) {
+            lastReportedProgress = progress;
+            await this.prisma.job.update({ where: { id: jobId }, data: { progress } });
+          }
+        }));
+      };
+
+      for (let i = 0; i < images.length; i += CONCURRENCY) {
+        const batch = images.slice(i, i + CONCURRENCY);
+        await Promise.all(batch.map(processImage));
+      }
+
+      await this.prisma.job.update({
+        where: { id: jobId },
+        data: {
+          status: 'succeeded',
+          progress: 100,
+          finishedAt: new Date(),
+        },
+      });
+
+      await this.redisService.delPattern(`dataset:${job.datasetId}:*`);
+
+      console.log(
+        `[Augmentation] Random job ${jobId} completed: ${totalCreated} augmented images created`
+      );
+    } catch (error) {
+      await this.prisma.job.update({
+        where: { id: jobId },
+        data: {
+          status: 'failed',
+          errorCode: 'RANDOM_AUGMENTATION_ERROR',
+          errorMessage: error instanceof Error ? error.message : 'Unknown error',
+          finishedAt: new Date(),
+        },
+      });
+      console.error(`[Augmentation] Random job ${jobId} failed:`, error);
     }
   }
 }
