@@ -302,15 +302,24 @@ export class RandomAugmentationService {
 
                 const rotatedBuffer = await sharp(extendedBuffer).rotate(degrees).toBuffer();
 
-                // Crop back to original dimensions from the center
-                const cropLeft = Math.max(0, Math.round((rotW - currentWidth) / 2));
-                const cropTop = Math.max(0, Math.round((rotH - currentHeight) / 2));
-                const cropW = Math.min(currentWidth, rotW - cropLeft);
-                const cropH = Math.min(currentHeight, rotH - cropTop);
+                // Crop back to original dimensions from the center.
+                // Use actual metadata in case the theoretical dimensions differ slightly.
+                const rotatedMeta = await sharp(rotatedBuffer).metadata();
+                const actualRotW = rotatedMeta.width ?? rotW;
+                const actualRotH = rotatedMeta.height ?? rotH;
 
-                currentBuffer = await sharp(rotatedBuffer)
-                  .extract({ left: cropLeft, top: cropTop, width: cropW, height: cropH })
-                  .toBuffer();
+                const cropLeft = Math.max(0, Math.round((actualRotW - currentWidth) / 2));
+                const cropTop = Math.max(0, Math.round((actualRotH - currentHeight) / 2));
+                const cropW = Math.min(currentWidth, actualRotW - cropLeft);
+                const cropH = Math.min(currentHeight, actualRotH - cropTop);
+
+                if (cropW > 0 && cropH > 0) {
+                  currentBuffer = await sharp(rotatedBuffer)
+                    .extract({ left: cropLeft, top: cropTop, width: cropW, height: cropH })
+                    .toBuffer();
+                } else {
+                  currentBuffer = rotatedBuffer;
+                }
               } else {
                 currentBuffer = await pipeline.rotate(degrees).toBuffer();
               }

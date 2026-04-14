@@ -153,17 +153,20 @@ export default function AnnotatePage() {
 
   // Load actual image for canvas
   useEffect(() => {
-    if (imageUrl) {
-      const img = new window.Image();
-      img.crossOrigin = 'anonymous';
-      img.onload = () => {
-        setLoadedImage(img);
-        // Use requestAnimationFrame to ensure the container has been laid out before
-        // calculating scale, preventing the initial zoomed-in view.
-        requestAnimationFrame(() => calculateScale(img));
-      };
-      img.src = imageUrl;
-    }
+    if (!imageUrl) return;
+    let rafId: number;
+    const img = new window.Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      setLoadedImage(img);
+      // Use requestAnimationFrame to ensure the container has been laid out before
+      // calculating scale, preventing the initial zoomed-in view.
+      rafId = requestAnimationFrame(() => calculateScale(img));
+    };
+    img.src = imageUrl;
+    return () => {
+      cancelAnimationFrame(rafId);
+    };
   }, [imageUrl, calculateScale]);
 
   // Recalculate scale whenever the container resizes (e.g. panel resize, window resize)

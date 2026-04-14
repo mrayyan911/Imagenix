@@ -93,18 +93,28 @@ export class ClassicalAugmentationService {
               .rotate(degrees)
               .toBuffer();
 
-            // Extract original-size region from center
-            const cropLeft = Math.max(0, Math.round((rotW - currentWidth) / 2));
-            const cropTop = Math.max(0, Math.round((rotH - currentHeight) / 2));
-            const cropW = Math.min(currentWidth, rotW - cropLeft);
-            const cropH = Math.min(currentHeight, rotH - cropTop);
+            // Extract original-size region from center.
+            // Guard against edge cases where the rotated image is smaller than expected.
+            const rotatedMeta = await sharp(rotatedBuffer).metadata();
+            const actualRotW = rotatedMeta.width ?? rotW;
+            const actualRotH = rotatedMeta.height ?? rotH;
 
-            pipeline = sharp(rotatedBuffer).extract({
-              left: cropLeft,
-              top: cropTop,
-              width: cropW,
-              height: cropH,
-            });
+            const cropLeft = Math.max(0, Math.round((actualRotW - currentWidth) / 2));
+            const cropTop = Math.max(0, Math.round((actualRotH - currentHeight) / 2));
+            const cropW = Math.min(currentWidth, actualRotW - cropLeft);
+            const cropH = Math.min(currentHeight, actualRotH - cropTop);
+
+            // Only extract if the region is valid; fall back to full rotated image otherwise.
+            if (cropW > 0 && cropH > 0) {
+              pipeline = sharp(rotatedBuffer).extract({
+                left: cropLeft,
+                top: cropTop,
+                width: cropW,
+                height: cropH,
+              });
+            } else {
+              pipeline = sharp(rotatedBuffer);
+            }
           } else {
             pipeline = pipeline.rotate(degrees);
           }
