@@ -43,11 +43,14 @@ interface SeededRandom {
 export class RandomAugmentationService {
   private readonly MIN_VISIBLE_AREA = 0.2;
 
-  private readonly STRENGTH_CONFIG: Record<AugmentationStrength, {
-    minTransforms: number;
-    maxTransforms: number;
-    intensityMultiplier: number;
-  }> = {
+  private readonly STRENGTH_CONFIG: Record<
+    AugmentationStrength,
+    {
+      minTransforms: number;
+      maxTransforms: number;
+      intensityMultiplier: number;
+    }
+  > = {
     low: { minTransforms: 1, maxTransforms: 2, intensityMultiplier: 0.5 },
     medium: { minTransforms: 2, maxTransforms: 4, intensityMultiplier: 1.0 },
     high: { minTransforms: 3, maxTransforms: 6, intensityMultiplier: 1.5 },
@@ -57,12 +60,12 @@ export class RandomAugmentationService {
     let hash = 0;
     for (let i = 0; i < seed.length; i++) {
       const char = seed.charCodeAt(i);
-      hash = ((hash << 5) - hash) + char;
+      hash = (hash << 5) - hash + char;
       hash = hash & hash;
     }
-    
+
     let state = Math.abs(hash) || 1;
-    
+
     const next = (): number => {
       state = (state * 1103515245 + 12345) & 0x7fffffff;
       return state / 0x7fffffff;
@@ -130,11 +133,17 @@ export class RandomAugmentationService {
     const numTransforms = rng.nextInt(config.minTransforms, config.maxTransforms);
 
     const shuffled = rng.shuffle(allTransforms);
-    
+
     for (const t of shuffled) {
       if (selectedTransforms.length >= numTransforms) break;
       if (rng.nextBool(t.weight * intensity)) {
-        const transform = this.generateTransformParams(t.type, rng, intensity, imageWidth, imageHeight);
+        const transform = this.generateTransformParams(
+          t.type,
+          rng,
+          intensity,
+          imageWidth,
+          imageHeight
+        );
         if (transform) {
           selectedTransforms.push(transform);
         }
@@ -144,8 +153,14 @@ export class RandomAugmentationService {
     if (selectedTransforms.length < config.minTransforms) {
       for (const t of shuffled) {
         if (selectedTransforms.length >= config.minTransforms) break;
-        if (!selectedTransforms.find(s => s.type === t.type)) {
-          const transform = this.generateTransformParams(t.type, rng, intensity, imageWidth, imageHeight);
+        if (!selectedTransforms.find((s) => s.type === t.type)) {
+          const transform = this.generateTransformParams(
+            t.type,
+            rng,
+            intensity,
+            imageWidth,
+            imageHeight
+          );
           if (transform) {
             selectedTransforms.push(transform);
           }
@@ -167,63 +182,75 @@ export class RandomAugmentationService {
       case 'flip_horizontal':
         return { type: 'flip_horizontal' };
 
-      case 'rotate_small':
+      case 'rotate_small': {
         const maxRotation = 10 * intensity;
         const rotation = rng.nextFloat(-maxRotation, maxRotation);
         return { type: 'rotate', value: rotation, params: { degrees: rotation } };
+      }
 
-      case 'scale_small':
+      case 'scale_small': {
         const scaleRange = 0.1 * intensity;
         const scale = rng.nextFloat(1 - scaleRange, 1 + scaleRange);
         return { type: 'scale', value: scale, params: { factor: scale } };
+      }
 
-      case 'translate':
+      case 'translate': {
         const maxShiftX = Math.round(imageWidth * 0.05 * intensity);
         const maxShiftY = Math.round(imageHeight * 0.05 * intensity);
         const shiftX = rng.nextInt(-maxShiftX, maxShiftX);
         const shiftY = rng.nextInt(-maxShiftY, maxShiftY);
         return { type: 'translate', params: { x: shiftX, y: shiftY } };
+      }
 
-      case 'safe_crop':
+      case 'safe_crop': {
         const cropPercent = rng.nextFloat(0.9, 0.98);
         return { type: 'safe_crop', value: cropPercent, params: { percent: cropPercent } };
+      }
 
-      case 'brightness_jitter':
+      case 'brightness_jitter': {
         const brightnessRange = 0.2 * intensity;
         const brightness = rng.nextFloat(1 - brightnessRange, 1 + brightnessRange);
         return { type: 'brightness', value: brightness, params: { factor: brightness } };
+      }
 
-      case 'contrast_jitter':
+      case 'contrast_jitter': {
         const contrastRange = 0.2 * intensity;
         const contrast = rng.nextFloat(1 - contrastRange, 1 + contrastRange);
         return { type: 'contrast', value: contrast, params: { factor: contrast } };
+      }
 
-      case 'saturation_jitter':
+      case 'saturation_jitter': {
         const saturationRange = 0.3 * intensity;
         const saturation = rng.nextFloat(1 - saturationRange, 1 + saturationRange);
         return { type: 'saturation', value: saturation, params: { factor: saturation } };
+      }
 
-      case 'hue_shift':
+      case 'hue_shift': {
         const hueRange = 15 * intensity;
         const hue = rng.nextInt(-Math.round(hueRange), Math.round(hueRange));
         return { type: 'hue', value: hue, params: { degrees: hue } };
+      }
 
-      case 'gamma':
+      case 'gamma': {
         const gammaRange = 0.2 * intensity;
         const gamma = rng.nextFloat(1 - gammaRange, 1 + gammaRange);
         return { type: 'gamma', value: gamma, params: { value: gamma } };
+      }
 
-      case 'blur_light':
+      case 'blur_light': {
         const blurSigma = rng.nextFloat(0.3, 1.0 * intensity);
         return { type: 'blur', value: blurSigma, params: { sigma: blurSigma } };
+      }
 
-      case 'sharpen_light':
+      case 'sharpen_light': {
         const sharpenSigma = rng.nextFloat(0.3, 0.8 * intensity);
         return { type: 'sharpen', value: sharpenSigma, params: { sigma: sharpenSigma } };
+      }
 
-      case 'jpeg_compress':
+      case 'jpeg_compress': {
         const quality = rng.nextInt(Math.round(85 - 10 * intensity), 95);
         return { type: 'jpeg_compress', value: quality, params: { quality } };
+      }
 
       default:
         return null;
@@ -231,21 +258,15 @@ export class RandomAugmentationService {
   }
 
   private orderTransforms(transforms: RandomTransform[], rng: SeededRandom): RandomTransform[] {
-    const geometry = transforms.filter(t => 
+    const geometry = transforms.filter((t) =>
       ['flip_horizontal', 'rotate', 'scale', 'translate', 'safe_crop'].includes(t.type)
     );
-    const color = transforms.filter(t => 
+    const color = transforms.filter((t) =>
       ['brightness', 'contrast', 'saturation', 'hue', 'gamma'].includes(t.type)
     );
-    const quality = transforms.filter(t => 
-      ['blur', 'sharpen', 'jpeg_compress'].includes(t.type)
-    );
+    const quality = transforms.filter((t) => ['blur', 'sharpen', 'jpeg_compress'].includes(t.type));
 
-    return [
-      ...rng.shuffle(geometry),
-      ...rng.shuffle(color),
-      ...rng.shuffle(quality),
-    ];
+    return [...rng.shuffle(geometry), ...rng.shuffle(color), ...rng.shuffle(quality)];
   }
 
   async applyRandomAugmentation(
@@ -253,7 +274,11 @@ export class RandomAugmentationService {
     transforms: RandomTransform[],
     originalWidth: number,
     originalHeight: number
-  ): Promise<RandomAugmentationResult & { cropParams?: { left: number; top: number; width: number; height: number } }> {
+  ): Promise<
+    RandomAugmentationResult & {
+      cropParams?: { left: number; top: number; width: number; height: number };
+    }
+  > {
     let currentBuffer = imageBuffer;
     let currentWidth = originalWidth;
     let currentHeight = originalHeight;
@@ -270,17 +295,40 @@ export class RandomAugmentationService {
             appliedTransforms.push(transform);
             break;
 
-          case 'rotate':
+          case 'rotate': {
             const degrees = transform.value || 0;
             if (Math.abs(degrees) > 0.5) {
-              pipeline = pipeline.rotate(degrees, { 
-                background: { r: 128, g: 128, b: 128, alpha: 1 } 
-              });
+              const rad = Math.abs((degrees * Math.PI) / 180);
+              const sinA = Math.sin(rad);
+              const padX = Math.ceil((currentHeight * sinA) / 2);
+              const padY = Math.ceil((currentWidth * sinA) / 2);
+
+              const padded = await pipeline
+                .extend({ top: padY, bottom: padY, left: padX, right: padX, extendWith: 'mirror' })
+                .toBuffer();
+
+              const rotBuf = await sharp(padded)
+                .rotate(degrees, { background: { r: 0, g: 0, b: 0, alpha: 0 } })
+                .toBuffer();
+              const rotMeta = await sharp(rotBuf).metadata();
+              const rotW = rotMeta.width!;
+              const rotH = rotMeta.height!;
+
+              const cL = Math.max(0, Math.floor((rotW - currentWidth) / 2));
+              const cT = Math.max(0, Math.floor((rotH - currentHeight) / 2));
+              const cW = Math.min(currentWidth, rotW - cL);
+              const cH = Math.min(currentHeight, rotH - cT);
+
+              pipeline = sharp(rotBuf).extract({ left: cL, top: cT, width: cW, height: cH });
+              if (cW !== currentWidth || cH !== currentHeight) {
+                pipeline = pipeline.resize(currentWidth, currentHeight);
+              }
               appliedTransforms.push(transform);
             }
             break;
+          }
 
-          case 'scale':
+          case 'scale': {
             const scaleFactor = transform.value || 1;
             if (Math.abs(scaleFactor - 1) > 0.01) {
               const newWidth = Math.max(1, Math.round(currentWidth * scaleFactor));
@@ -291,28 +339,27 @@ export class RandomAugmentationService {
               appliedTransforms.push(transform);
             }
             break;
+          }
 
-          case 'translate':
+          case 'translate': {
             const shiftX = transform.params?.x || 0;
             const shiftY = transform.params?.y || 0;
             if (Math.abs(shiftX) > 0 || Math.abs(shiftY) > 0) {
-              pipeline = pipeline.extend({
-                top: Math.max(0, -shiftY),
-                bottom: Math.max(0, shiftY),
-                left: Math.max(0, -shiftX),
-                right: Math.max(0, shiftX),
-                background: { r: 128, g: 128, b: 128, alpha: 1 },
-              }).extract({
-                left: Math.max(0, shiftX),
-                top: Math.max(0, shiftY),
-                width: currentWidth,
-                height: currentHeight,
-              });
-              appliedTransforms.push(transform);
+              const extL = Math.max(0, -shiftX);
+              const extT = Math.max(0, -shiftY);
+              const extW = currentWidth - Math.abs(shiftX);
+              const extH = currentHeight - Math.abs(shiftY);
+              if (extW > 1 && extH > 1) {
+                pipeline = pipeline
+                  .extract({ left: extL, top: extT, width: extW, height: extH })
+                  .resize(currentWidth, currentHeight);
+                appliedTransforms.push(transform);
+              }
             }
             break;
+          }
 
-          case 'safe_crop':
+          case 'safe_crop': {
             const cropPercent = transform.value || 0.95;
             const cropWidth = Math.max(1, Math.round(currentWidth * cropPercent));
             const cropHeight = Math.max(1, Math.round(currentHeight * cropPercent));
@@ -320,70 +367,81 @@ export class RandomAugmentationService {
             const maxTop = Math.max(0, currentHeight - cropHeight);
             const left = Math.floor(maxLeft / 2);
             const top = Math.floor(maxTop / 2);
-            
             if (cropWidth < currentWidth || cropHeight < currentHeight) {
               pipeline = pipeline.extract({ left, top, width: cropWidth, height: cropHeight });
               cropParams = { left, top, width: cropWidth, height: cropHeight };
               currentWidth = cropWidth;
               currentHeight = cropHeight;
-              appliedTransforms.push({ ...transform, params: { ...transform.params, left, top, width: cropWidth, height: cropHeight } });
+              appliedTransforms.push({
+                ...transform,
+                params: { ...transform.params, left, top, width: cropWidth, height: cropHeight },
+              });
             }
             break;
+          }
 
-          case 'brightness':
+          case 'brightness': {
             const brightness = transform.value || 1;
             pipeline = pipeline.modulate({ brightness });
             appliedTransforms.push(transform);
             break;
+          }
 
-          case 'contrast':
+          case 'contrast': {
             const contrast = transform.value || 1;
             pipeline = pipeline.linear(contrast, -(128 * contrast) + 128);
             appliedTransforms.push(transform);
             break;
+          }
 
-          case 'saturation':
+          case 'saturation': {
             const saturation = transform.value || 1;
             pipeline = pipeline.modulate({ saturation });
             appliedTransforms.push(transform);
             break;
+          }
 
-          case 'hue':
+          case 'hue': {
             const hue = transform.value || 0;
             if (Math.abs(hue) > 0) {
               pipeline = pipeline.modulate({ hue });
               appliedTransforms.push(transform);
             }
             break;
+          }
 
-          case 'gamma':
+          case 'gamma': {
             const gamma = transform.value || 1;
             if (Math.abs(gamma - 1) > 0.01) {
               pipeline = pipeline.gamma(gamma);
               appliedTransforms.push(transform);
             }
             break;
+          }
 
-          case 'blur':
+          case 'blur': {
             const blurSigma = transform.value || 0.5;
             if (blurSigma >= 0.3) {
               pipeline = pipeline.blur(blurSigma);
               appliedTransforms.push(transform);
             }
             break;
+          }
 
-          case 'sharpen':
+          case 'sharpen': {
             const sharpenSigma = transform.value || 0.5;
             pipeline = pipeline.sharpen({ sigma: sharpenSigma });
             appliedTransforms.push(transform);
             break;
+          }
 
-          case 'jpeg_compress':
+          case 'jpeg_compress': {
             const quality = transform.value || 90;
             currentBuffer = await pipeline.toBuffer();
             pipeline = sharp(currentBuffer).jpeg({ quality }).png();
             appliedTransforms.push(transform);
             break;
+          }
         }
 
         currentBuffer = await pipeline.toBuffer();
@@ -398,9 +456,7 @@ export class RandomAugmentationService {
     }
 
     // Final encode as JPEG for smaller file size and faster I/O
-    currentBuffer = await sharp(currentBuffer)
-      .jpeg({ quality: 92, mozjpeg: true })
-      .toBuffer();
+    currentBuffer = await sharp(currentBuffer).jpeg({ quality: 92, mozjpeg: true }).toBuffer();
 
     const sha256 = crypto.createHash('sha256').update(currentBuffer).digest('hex');
 
@@ -416,7 +472,14 @@ export class RandomAugmentationService {
   }
 
   transformAnnotations(
-    annotations: { id: string; labelClassId: string; x: number; y: number; width: number; height: number }[],
+    annotations: {
+      id: string;
+      labelClassId: string;
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+    }[],
     transforms: RandomTransform[],
     originalWidth: number,
     originalHeight: number,
@@ -438,38 +501,35 @@ export class RandomAugmentationService {
             x = imgW - x - w;
             break;
 
-          case 'rotate':
+          case 'rotate': {
             const degrees = transform.value || 0;
             const radians = (degrees * Math.PI) / 180;
             const cos = Math.cos(radians);
             const sin = Math.sin(radians);
             const cx = imgW / 2;
             const cy = imgH / 2;
-            
             const corners = [
               { x: x, y: y },
               { x: x + w, y: y },
               { x: x + w, y: y + h },
               { x: x, y: y + h },
             ];
-
-            const rotatedCorners = corners.map(c => ({
+            const rotatedCorners = corners.map((c) => ({
               x: cos * (c.x - cx) - sin * (c.y - cy) + cx,
               y: sin * (c.x - cx) + cos * (c.y - cy) + cy,
             }));
-
-            const minX = Math.min(...rotatedCorners.map(c => c.x));
-            const maxX = Math.max(...rotatedCorners.map(c => c.x));
-            const minY = Math.min(...rotatedCorners.map(c => c.y));
-            const maxY = Math.max(...rotatedCorners.map(c => c.y));
-
+            const minX = Math.min(...rotatedCorners.map((c) => c.x));
+            const maxX = Math.max(...rotatedCorners.map((c) => c.x));
+            const minY = Math.min(...rotatedCorners.map((c) => c.y));
+            const maxY = Math.max(...rotatedCorners.map((c) => c.y));
             x = minX;
             y = minY;
             w = maxX - minX;
             h = maxY - minY;
             break;
+          }
 
-          case 'scale':
+          case 'scale': {
             const scaleFactor = transform.value || 1;
             x = Math.round(x * scaleFactor);
             y = Math.round(y * scaleFactor);
@@ -478,15 +538,17 @@ export class RandomAugmentationService {
             imgW = Math.round(imgW * scaleFactor);
             imgH = Math.round(imgH * scaleFactor);
             break;
+          }
 
-          case 'translate':
+          case 'translate': {
             const shiftX = transform.params?.x || 0;
             const shiftY = transform.params?.y || 0;
             x -= shiftX;
             y -= shiftY;
             break;
+          }
 
-          case 'safe_crop':
+          case 'safe_crop': {
             const cropLeft = transform.params?.left || 0;
             const cropTop = transform.params?.top || 0;
             x -= cropLeft;
@@ -494,6 +556,7 @@ export class RandomAugmentationService {
             imgW = transform.params?.width || imgW;
             imgH = transform.params?.height || imgH;
             break;
+          }
         }
       }
 
@@ -505,11 +568,11 @@ export class RandomAugmentationService {
       const clampedArea = Math.max(0, clampedW) * Math.max(0, clampedH);
       const visibleArea = originalArea > 0 ? clampedArea / originalArea : 0;
 
-      const isValid = 
-        clampedW > 2 && 
-        clampedH > 2 && 
+      const isValid =
+        clampedW > 2 &&
+        clampedH > 2 &&
         visibleArea >= this.MIN_VISIBLE_AREA &&
-        clampedX >= 0 && 
+        clampedX >= 0 &&
         clampedY >= 0 &&
         clampedX + clampedW <= newWidth &&
         clampedY + clampedH <= newHeight;
@@ -543,7 +606,12 @@ export class RandomAugmentationService {
     seed: string;
   }> {
     const transforms = this.selectRandomTransforms(strength, seed, originalWidth, originalHeight);
-    const result = await this.applyRandomAugmentation(imageBuffer, transforms, originalWidth, originalHeight);
+    const result = await this.applyRandomAugmentation(
+      imageBuffer,
+      transforms,
+      originalWidth,
+      originalHeight
+    );
 
     const maxDim = 400;
     let previewWidth = result.width;

@@ -39,7 +39,7 @@ export class ClassicalAugmentationService {
     originalHeight: number
   ): Promise<AugmentationResult> {
     const transformsApplied: string[] = [];
-    
+
     // Track current dimensions as transforms are applied
     let currentWidth = originalWidth;
     let currentHeight = originalHeight;
@@ -59,46 +59,88 @@ export class ClassicalAugmentationService {
           transformsApplied.push('flip_vertical');
           break;
 
-        case 'rotate':
+        case 'rotate': {
           const degrees = transform.value || 90;
-          pipeline = pipeline.rotate(degrees, { background: { r: 0, g: 0, b: 0, alpha: 0 } });
-          transformsApplied.push(`rotate_${degrees}`);
-          // Update dimensions for 90/270 degree rotations
-          if (degrees === 90 || degrees === 270 || degrees === -90 || degrees === -270) {
-            [currentWidth, currentHeight] = [currentHeight, currentWidth];
-          }
-          break;
+          if (Math.abs(degrees % 360) > 0.5) {
+            const rad = Math.abs((degrees * Math.PI) / 180);
+            const sinA = Math.sin(rad);
+            const padX = Math.ceil((currentHeight * sinA) / 2);
+            const padY = Math.ceil((currentWidth * sinA) / 2);
 
-        case 'brightness':
+            const paddedBuf = await pipeline
+              .extend({
+                top: padY,
+                bottom: padY,
+                left: padX,
+                right: padX,
+                extendWith: 'mirror',
+              })
+              .toBuffer();
+
+            const rotBuf = await sharp(paddedBuf)
+              .rotate(degrees, { background: { r: 0, g: 0, b: 0, alpha: 0 } })
+              .toBuffer();
+            const rotMeta = await sharp(rotBuf).metadata();
+            const rotW = rotMeta.width!;
+            const rotH = rotMeta.height!;
+
+            const cL = Math.max(0, Math.floor((rotW - currentWidth) / 2));
+            const cT = Math.max(0, Math.floor((rotH - currentHeight) / 2));
+            const cW = Math.min(currentWidth, rotW - cL);
+            const cH = Math.min(currentHeight, rotH - cT);
+
+            pipeline = sharp(rotBuf).extract({ left: cL, top: cT, width: cW, height: cH });
+            if (cW !== currentWidth || cH !== currentHeight) {
+              pipeline = pipeline.resize(currentWidth, currentHeight);
+            }
+
+            currentBuffer = await pipeline.toBuffer();
+            const rotFinalMeta = await sharp(currentBuffer).metadata();
+            if (rotFinalMeta.width && rotFinalMeta.height) {
+              currentWidth = rotFinalMeta.width;
+              currentHeight = rotFinalMeta.height;
+            }
+            transformsApplied.push(`rotate_${degrees}`);
+            continue;
+          }
+          transformsApplied.push(`rotate_${degrees}`);
+          break;
+        }
+
+        case 'brightness': {
           const brightnessFactor = transform.value || 1.2;
           pipeline = pipeline.modulate({ brightness: brightnessFactor });
           transformsApplied.push(`brightness_${brightnessFactor}`);
           break;
+        }
 
-        case 'contrast':
+        case 'contrast': {
           const contrastFactor = transform.value || 1.2;
           pipeline = pipeline.linear(contrastFactor, -(128 * contrastFactor) + 128);
           transformsApplied.push(`contrast_${contrastFactor}`);
           break;
+        }
 
-        case 'saturation':
+        case 'saturation': {
           const saturationFactor = transform.value || 1.3;
           pipeline = pipeline.modulate({ saturation: saturationFactor });
           transformsApplied.push(`saturation_${saturationFactor}`);
           break;
+        }
 
-        case 'blur':
+        case 'blur': {
           const blurSigma = transform.value || 2;
           pipeline = pipeline.blur(blurSigma);
           transformsApplied.push(`blur_${blurSigma}`);
           break;
+        }
 
         case 'noise':
           pipeline = pipeline.sharpen({ sigma: transform.value || 1 });
           transformsApplied.push(`noise_${transform.value || 1}`);
           break;
 
-        case 'scale':
+        case 'scale': {
           const scaleFactor = transform.value || 0.8;
           const newScaleWidth = Math.max(1, Math.round(currentWidth * scaleFactor));
           const newScaleHeight = Math.max(1, Math.round(currentHeight * scaleFactor));
@@ -107,42 +149,31 @@ export class ClassicalAugmentationService {
           currentHeight = newScaleHeight;
           transformsApplied.push(`scale_${scaleFactor}`);
           break;
+        }
 
-        case 'crop':
-          // Random crop - take specified percent of image from random position
+        case 'crop': {
           const cropPercent = Math.min(0.95, Math.max(0.5, transform.value || 0.8));
           const cropWidth = Math.max(1, Math.round(currentWidth * cropPercent));
           const cropHeight = Math.max(1, Math.round(currentHeight * cropPercent));
-          
-          // Calculate max offsets, ensuring they're non-negative
           const maxLeft = Math.max(0, currentWidth - cropWidth);
           const maxTop = Math.max(0, currentHeight - cropHeight);
-          
-          // Random position within valid range
           const left = maxLeft > 0 ? Math.floor(Math.random() * maxLeft) : 0;
           const top = maxTop > 0 ? Math.floor(Math.random() * maxTop) : 0;
-          
-          // Ensure extract area is valid
           const extractWidth = Math.min(cropWidth, currentWidth - left);
           const extractHeight = Math.min(cropHeight, currentHeight - top);
-          
           if (extractWidth > 0 && extractHeight > 0) {
-            pipeline = pipeline.extract({ 
-              left, 
-              top, 
-              width: extractWidth, 
-              height: extractHeight 
-            });
+            pipeline = pipeline.extract({ left, top, width: extractWidth, height: extractHeight });
             currentWidth = extractWidth;
             currentHeight = extractHeight;
             transformsApplied.push(`crop_${cropPercent}`);
           }
           break;
+        }
       }
 
       // Get intermediate result to use for next transform
       currentBuffer = await pipeline.toBuffer();
-      
+
       // Update dimensions from actual output (handles rotation edge cases)
       const intermediateMetadata = await sharp(currentBuffer).metadata();
       if (intermediateMetadata.width && intermediateMetadata.height) {
@@ -167,7 +198,14 @@ export class ClassicalAugmentationService {
    * Transform bounding box annotations based on applied augmentations
    */
   transformAnnotations(
-    annotations: { id: string; labelClassId: string; x: number; y: number; width: number; height: number }[],
+    annotations: {
+      id: string;
+      labelClassId: string;
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+    }[],
     transforms: { type: string; value?: number }[],
     originalWidth: number,
     originalHeight: number,
@@ -192,7 +230,7 @@ export class ClassicalAugmentationService {
             y = imgH - y - h;
             break;
 
-          case 'rotate':
+          case 'rotate': {
             const degrees = transform.value || 90;
             if (degrees === 90) {
               const newX = imgH - y - h;
@@ -219,8 +257,9 @@ export class ClassicalAugmentationService {
               [imgW, imgH] = [imgH, imgW];
             }
             break;
+          }
 
-          case 'scale':
+          case 'scale': {
             const scaleFactor = transform.value || 0.8;
             x = Math.round(x * scaleFactor);
             y = Math.round(y * scaleFactor);
@@ -229,6 +268,7 @@ export class ClassicalAugmentationService {
             imgW = Math.round(imgW * scaleFactor);
             imgH = Math.round(imgH * scaleFactor);
             break;
+          }
 
           case 'crop':
             // For crop, we'd need to know the exact crop region
@@ -260,7 +300,13 @@ export class ClassicalAugmentationService {
     transforms: { type: string; value?: number }[],
     originalWidth: number,
     originalHeight: number
-  ): Promise<{ previewBuffer: Buffer; previewWidth: number; previewHeight: number; actualWidth: number; actualHeight: number }> {
+  ): Promise<{
+    previewBuffer: Buffer;
+    previewWidth: number;
+    previewHeight: number;
+    actualWidth: number;
+    actualHeight: number;
+  }> {
     const result = await this.augmentImage(imageBuffer, transforms, originalWidth, originalHeight);
 
     // Create a smaller preview (max 400px)
@@ -279,9 +325,9 @@ export class ClassicalAugmentationService {
       .jpeg({ quality: 80 })
       .toBuffer();
 
-    return { 
-      previewBuffer, 
-      previewWidth, 
+    return {
+      previewBuffer,
+      previewWidth,
       previewHeight,
       actualWidth: result.width,
       actualHeight: result.height,

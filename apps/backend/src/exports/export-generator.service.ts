@@ -51,6 +51,7 @@ export class ExportGeneratorService {
         annotations: {
           where: {
             status: { in: annotationStatus },
+            deletedAt: null,
           },
           include: {
             labelClass: true,
@@ -80,6 +81,7 @@ export class ExportGeneratorService {
         where: { datasetId },
         include: {
           annotations: {
+            where: { deletedAt: null },
             include: {
               labelClass: true,
             },
@@ -88,7 +90,10 @@ export class ExportGeneratorService {
       });
 
       console.log(`[ExportGenerator] Found ${imagesWithAllAnnotations.length} images`);
-      const totalAnnotations = imagesWithAllAnnotations.reduce((sum, img) => sum + img.annotations.length, 0);
+      const totalAnnotations = imagesWithAllAnnotations.reduce(
+        (sum, img) => sum + img.annotations.length,
+        0
+      );
       console.log(`[ExportGenerator] Total annotations: ${totalAnnotations}`);
 
       return this.generateLabeledImages(
@@ -170,22 +175,34 @@ export class ExportGeneratorService {
 
     // Default colors for classes without assigned color
     const defaultColors = [
-      '#3B82F6', '#EF4444', '#10B981', '#F59E0B', '#8B5CF6',
-      '#EC4899', '#06B6D4', '#F97316', '#84CC16', '#6366F1',
+      '#3B82F6',
+      '#EF4444',
+      '#10B981',
+      '#F59E0B',
+      '#8B5CF6',
+      '#EC4899',
+      '#06B6D4',
+      '#F97316',
+      '#84CC16',
+      '#6366F1',
     ];
 
-    return new Promise(async (resolve, reject) => {
+    const bufferPromise = new Promise<Buffer>((resolve, reject) => {
       archive.on('data', (chunk) => chunks.push(chunk));
       archive.on('end', () => resolve(Buffer.concat(chunks)));
       archive.on('error', reject);
+    });
 
+    const doWork = async () => {
       let processedCount = 0;
       const totalImages = images.length;
 
       for (const img of images) {
         try {
-          console.log(`[ExportGenerator] Processing ${img.fileName} with ${img.annotations.length} annotations`);
-          
+          console.log(
+            `[ExportGenerator] Processing ${img.fileName} with ${img.annotations.length} annotations`
+          );
+
           // Download original image from storage
           const imageBuffer = await this.storageService.downloadFile(img.fileKey);
 
@@ -216,24 +233,12 @@ export class ExportGeneratorService {
 
           if (outputFormat === 'png') {
             outputBuffer = await sharp(imageBuffer)
-              .composite([
-                {
-                  input: svgBuffer,
-                  top: 0,
-                  left: 0,
-                },
-              ])
+              .composite([{ input: svgBuffer, top: 0, left: 0 }])
               .png({ compressionLevel: 6 })
               .toBuffer();
           } else {
             outputBuffer = await sharp(imageBuffer)
-              .composite([
-                {
-                  input: svgBuffer,
-                  top: 0,
-                  left: 0,
-                },
-              ])
+              .composite([{ input: svgBuffer, top: 0, left: 0 }])
               .jpeg({ quality: 92, mozjpeg: true })
               .toBuffer();
           }
@@ -259,13 +264,16 @@ export class ExportGeneratorService {
       archive.append(manifest, { name: 'manifest.json' });
 
       // Add README
-      archive.append(
-        this.generateLabeledReadme(outputFormat, images.length, labelClasses.length),
-        { name: 'README.txt' }
-      );
+      archive.append(this.generateLabeledReadme(outputFormat, images.length, labelClasses.length), {
+        name: 'README.txt',
+      });
 
       archive.finalize();
-    });
+    };
+
+    doWork().catch((err) => archive.emit('error', err));
+
+    return bufferPromise;
   }
 
   private createAnnotationSvg(
@@ -275,8 +283,10 @@ export class ExportGeneratorService {
     colorMap: Map<string, string>,
     defaultColors: string[]
   ): string {
-    console.log(`[ExportGenerator] Creating SVG for ${annotations.length} annotations, size: ${width}x${height}`);
-    
+    console.log(
+      `[ExportGenerator] Creating SVG for ${annotations.length} annotations, size: ${width}x${height}`
+    );
+
     let colorIndex = 0;
     const elements: string[] = [];
 
@@ -292,18 +302,20 @@ export class ExportGeneratorService {
       const w = Math.round(ann.width);
       const h = Math.round(ann.height);
 
-      console.log(`[ExportGenerator] Annotation: ${ann.labelClass.name} at (${x},${y}) ${w}x${h} color=${color}`);
+      console.log(
+        `[ExportGenerator] Annotation: ${ann.labelClass.name} at (${x},${y}) ${w}x${h} color=${color}`
+      );
 
       // Draw bounding box with stroke
       elements.push(
         `<rect x="${x}" y="${y}" width="${w}" height="${h}" ` +
-        `fill="none" stroke="${color}" stroke-width="3" />`
+          `fill="none" stroke="${color}" stroke-width="3" />`
       );
 
       // Draw semi-transparent fill
       elements.push(
         `<rect x="${x}" y="${y}" width="${w}" height="${h}" ` +
-        `fill="${color}" fill-opacity="0.15" />`
+          `fill="${color}" fill-opacity="0.15" />`
       );
 
       // Draw label background
@@ -316,14 +328,14 @@ export class ExportGeneratorService {
 
       elements.push(
         `<rect x="${x}" y="${labelY}" width="${labelWidth}" height="${labelHeight}" ` +
-        `fill="${color}" rx="2" />`
+          `fill="${color}" rx="2" />`
       );
 
       // Draw label text
       elements.push(
         `<text x="${x + labelPadding}" y="${labelY + fontSize + labelPadding / 2}" ` +
-        `font-family="Arial, sans-serif" font-size="${fontSize}" font-weight="bold" fill="white">` +
-        `${this.escapeXml(labelText)}</text>`
+          `font-family="Arial, sans-serif" font-size="${fontSize}" font-weight="bold" fill="white">` +
+          `${this.escapeXml(labelText)}</text>`
       );
     }
 

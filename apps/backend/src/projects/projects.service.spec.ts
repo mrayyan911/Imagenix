@@ -10,6 +10,7 @@ describe('ProjectsService', () => {
   const mockPrismaService = {
     project: {
       findUnique: jest.fn(),
+      findFirst: jest.fn(),
       findMany: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
@@ -44,7 +45,7 @@ describe('ProjectsService', () => {
       const userId = 'user-id';
       const dto = { name: 'Test Project', description: 'Test description' };
 
-      mockPrismaService.project.findUnique.mockResolvedValue(null);
+      mockPrismaService.project.findFirst.mockResolvedValue(null);
       mockPrismaService.project.create.mockResolvedValue({
         id: 'project-id',
         ...dto,
@@ -58,11 +59,11 @@ describe('ProjectsService', () => {
     });
 
     it('should throw ConflictException if project name exists', async () => {
-      mockPrismaService.project.findUnique.mockResolvedValue({ id: 'existing-id' });
+      mockPrismaService.project.findFirst.mockResolvedValue({ id: 'existing-id' });
 
-      await expect(
-        service.create('user-id', { name: 'Existing Project' })
-      ).rejects.toThrow(ConflictException);
+      await expect(service.create('user-id', { name: 'Existing Project' })).rejects.toThrow(
+        ConflictException
+      );
     });
   });
 
@@ -90,9 +91,7 @@ describe('ProjectsService', () => {
     it('should throw NotFoundException if project not found', async () => {
       mockPrismaService.project.findUnique.mockResolvedValue(null);
 
-      await expect(service.findOne('nonexistent', 'user-id')).rejects.toThrow(
-        NotFoundException
-      );
+      await expect(service.findOne('nonexistent', 'user-id')).rejects.toThrow(NotFoundException);
     });
 
     it('should throw ForbiddenException if user does not own project', async () => {
@@ -101,9 +100,7 @@ describe('ProjectsService', () => {
         userId: 'other-user-id',
       });
 
-      await expect(service.findOne('project-id', 'user-id')).rejects.toThrow(
-        ForbiddenException
-      );
+      await expect(service.findOne('project-id', 'user-id')).rejects.toThrow(ForbiddenException);
     });
   });
 

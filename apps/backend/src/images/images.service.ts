@@ -124,7 +124,9 @@ export class ImagesService {
           include: {
             labelClass: true,
           },
-          where: query.hasAnnotations ? { status: { not: 'rejected' } } : undefined,
+          where: query.hasAnnotations
+            ? { deletedAt: null, status: { not: 'rejected' } }
+            : { deletedAt: null },
         },
       },
     });
@@ -167,6 +169,7 @@ export class ImagesService {
           },
         },
         annotations: {
+          where: { deletedAt: null },
           include: {
             labelClass: true,
           },

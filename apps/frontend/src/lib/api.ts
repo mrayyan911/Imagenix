@@ -185,8 +185,11 @@ export const imagesApi = {
 
 // Annotations API
 export const annotationsApi = {
-  list: (imageId: string) =>
-    api.get<ApiResponse<{ annotations: Annotation[] }>>(`/images/${imageId}/annotations`),
+  list: (imageId: string, params?: { limit?: number; cursor?: string }) =>
+    api.get<ApiResponse<{ annotations: Annotation[]; nextCursor: string | null }>>(
+      `/images/${imageId}/annotations`,
+      { params }
+    ),
 
   create: (
     imageId: string,
@@ -289,10 +292,7 @@ export const augmentationApi = {
       data
     ),
 
-  preview: (
-    imageId: string,
-    transforms: { type: string; value?: number }[]
-  ) =>
+  preview: (imageId: string, transforms: { type: string; value?: number }[]) =>
     api.post<
       ApiResponse<{
         preview: string;
@@ -306,10 +306,7 @@ export const augmentationApi = {
       }>
     >(`/images/${imageId}/augmentation/preview`, { transforms }),
 
-  previewRandom: (
-    imageId: string,
-    data: { strength: 'low' | 'medium' | 'high'; seed?: string }
-  ) =>
+  previewRandom: (imageId: string, data: { strength: 'low' | 'medium' | 'high'; seed?: string }) =>
     api.post<
       ApiResponse<{
         preview: string;

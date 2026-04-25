@@ -66,7 +66,10 @@ export class LabelClassesService {
     return { classes };
   }
 
-  async findAllByProjectWithCounts(projectId: string, userId: string): Promise<{ classes: LabelClassWithCount[] }> {
+  async findAllByProjectWithCounts(
+    projectId: string,
+    userId: string
+  ): Promise<{ classes: LabelClassWithCount[] }> {
     // Verify project ownership
     await this.projectsService.verifyOwnership(projectId, userId);
 
@@ -74,7 +77,9 @@ export class LabelClassesService {
       where: { projectId },
       include: {
         _count: {
-          select: { annotations: true },
+          select: {
+            annotations: { where: { deletedAt: null } },
+          },
         },
       },
       orderBy: { name: 'asc' },
@@ -105,7 +110,9 @@ export class LabelClassesService {
       },
       include: {
         _count: {
-          select: { annotations: true },
+          select: {
+            annotations: { where: { deletedAt: null } },
+          },
         },
       },
     });
