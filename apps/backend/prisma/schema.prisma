@@ -147,18 +147,20 @@ model Image {
 }
 
 model Annotation {
-  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  imageId      String   @map("image_id") @db.Uuid
-  labelClassId String   @map("label_class_id") @db.Uuid
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  imageId      String    @map("image_id") @db.Uuid
+  labelClassId String    @map("label_class_id") @db.Uuid
   x            Int
   y            Int
   width        Int
   height       Int
-  source       String   @default("manual") @db.VarChar(10)
-  status       String   @default("approved") @db.VarChar(10)
-  confidence   Decimal? @db.Decimal(4, 3)
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  source       String    @default("manual") @db.VarChar(10)
+  status       String    @default("approved") @db.VarChar(10)
+  confidence   Decimal?  @db.Decimal(4, 3)
+  version      Int       @default(1)
+  deletedAt    DateTime? @map("deleted_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
 
   // Relations
   image      Image      @relation(fields: [imageId], references: [id], onDelete: Cascade)
@@ -168,6 +170,7 @@ model Annotation {
   @@index([labelClassId], name: "annotations_label_class_id_idx")
   @@index([imageId, status], name: "annotations_image_status_idx")
   @@index([source], name: "annotations_source_idx")
+  @@index([deletedAt], name: "annotations_deleted_at_idx")
   @@map("annotations")
 }
 
