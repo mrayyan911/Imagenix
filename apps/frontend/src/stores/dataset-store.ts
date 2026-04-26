@@ -14,10 +14,10 @@ interface DatasetJobState {
 interface DatasetState {
   // Selected images per dataset
   selectedImages: Record<string, Set<string>>;
-  
+
   // Active jobs per dataset
   activeJobs: Record<string, DatasetJobState>;
-  
+
   // Polling intervals
   pollingIntervals: Record<string, NodeJS.Timeout>;
 
@@ -28,13 +28,23 @@ interface DatasetState {
   selectAll: (datasetId: string, imageIds: string[]) => void;
   deselectAll: (datasetId: string) => void;
   getSelectedImages: (datasetId: string) => Set<string>;
-  
+
   // Job management
-  startJob: (datasetId: string, jobId: string, jobType: 'auto-annotation' | 'export', totalImages: number) => void;
-  updateJobProgress: (datasetId: string, progress: number, status?: string, errorMessage?: string) => void;
+  startJob: (
+    datasetId: string,
+    jobId: string,
+    jobType: 'auto-annotation' | 'export',
+    totalImages: number
+  ) => void;
+  updateJobProgress: (
+    datasetId: string,
+    progress: number,
+    status?: string,
+    errorMessage?: string
+  ) => void;
   clearJob: (datasetId: string) => void;
   getJob: (datasetId: string) => DatasetJobState | null;
-  
+
   // Polling
   startPolling: (datasetId: string, jobId: string, onComplete?: () => void) => void;
   stopPolling: (datasetId: string) => void;
@@ -149,20 +159,14 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
 
         if (!job) return;
 
-        get().updateJobProgress(
-          datasetId,
-          job.progress || 0,
-          job.status,
-          job.errorMessage
-        );
+        get().updateJobProgress(datasetId, job.progress || 0, job.status, job.errorMessage);
 
         if (job.status === 'succeeded' || job.status === 'failed') {
           get().stopPolling(datasetId);
-          
+
           // Keep job state visible for 2 seconds, then clear
           setTimeout(() => {
             const finalStatus = job.status;
-            const errorMsg = job.errorMessage;
             get().clearJob(datasetId);
             if (finalStatus === 'succeeded' && onComplete) {
               onComplete();

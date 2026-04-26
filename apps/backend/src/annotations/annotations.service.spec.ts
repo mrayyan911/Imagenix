@@ -277,10 +277,11 @@ describe('AnnotationsService', () => {
       await expect(service.delete('ann-1', 'user-1')).rejects.toThrow(ForbiddenException);
     });
 
-    it('treats already-soft-deleted annotation as not found', async () => {
+    it('treats already-soft-deleted annotation as success (idempotent)', async () => {
       mockPrisma.annotation.findUnique.mockResolvedValue(mockAnnotation({ deletedAt: new Date() }));
 
-      await expect(service.delete('ann-1', 'user-1')).rejects.toThrow(NotFoundException);
+      const result = await service.delete('ann-1', 'user-1');
+      expect(result).toEqual({ success: true });
     });
 
     it('invalidates both cache keys after delete', async () => {

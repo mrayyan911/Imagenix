@@ -1,4 +1,4 @@
-import { IsString, IsNumber, IsUUID, Min } from 'class-validator';
+import { IsNumber, IsUUID, Min } from 'class-validator';
 
 export class CreateAnnotationDto {
   @IsUUID()

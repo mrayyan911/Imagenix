@@ -1,4 +1,4 @@
-import { IsString, IsNumber, IsUUID, IsOptional, Min, IsIn } from 'class-validator';
+import { IsNumber, IsUUID, IsOptional, Min, IsIn } from 'class-validator';
 
 export class UpdateAnnotationDto {
   @IsOptional()

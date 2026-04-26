@@ -6,14 +6,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useAuthStore } from '@/stores/auth-store';
 import { Button } from '@/components/ui/button';
 import { ThemeToggle } from '@/components/layout/theme-toggle';
-import {
-  LayoutDashboard,
-  FolderOpen,
-  Settings,
-  LogOut,
-  ChevronDown,
-  User,
-} from 'lucide-react';
+import { LayoutDashboard, FolderOpen, LogOut, User } from 'lucide-react';
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -73,11 +66,7 @@ export function AppShell({ children }: AppShellProps) {
               const isActive = pathname.startsWith(item.href);
               return (
                 <Link key={item.name} href={item.href}>
-                  <Button
-                    variant={isActive ? 'secondary' : 'ghost'}
-                    size="sm"
-                    className="gap-2"
-                  >
+                  <Button variant={isActive ? 'secondary' : 'ghost'} size="sm" className="gap-2">
                     <item.icon className="h-4 w-4" />
                     {item.name}
                   </Button>

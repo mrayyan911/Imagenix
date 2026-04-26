@@ -5,17 +5,10 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { projectsApi, type Project } from '@/lib/api';
+import { projectsApi } from '@/lib/api';
 import { useProjectStore } from '@/stores/project-store';
 import { useToast } from '@/hooks/use-toast';
-import {
-  Plus,
-  FolderOpen,
-  Search,
-  Loader2,
-  MoreVertical,
-  Trash2,
-} from 'lucide-react';
+import { Plus, FolderOpen, Search, Loader2, Trash2 } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
 
 export default function ProjectsPage() {
@@ -79,9 +72,7 @@ export default function ProjectsPage() {
         <div className="flex items-center justify-between mb-8">
           <div>
             <h1 className="text-3xl font-bold text-neutral-900">Projects</h1>
-            <p className="text-neutral-500 mt-1">
-              Manage your annotation projects
-            </p>
+            <p className="text-neutral-500 mt-1">Manage your annotation projects</p>
           </div>
           <Link href="/projects/new">
             <Button className="gap-2">

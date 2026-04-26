@@ -1,19 +1,21 @@
 'use client';
 
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
-import { LabelClassesManager, type LabelClassesManagerRef } from '@/components/label-classes-manager';
+import {
+  LabelClassesManager,
+  type LabelClassesManagerRef,
+} from '@/components/label-classes-manager';
 import {
   datasetsApi,
   imagesApi,
   jobsApi,
   exportsApi,
-  labelClassesApi,
   type Dataset,
   type Image,
   type LabelClass,
@@ -27,8 +29,6 @@ import {
   Sparkles,
   Download,
   Loader2,
-  CheckCircle,
-  AlertCircle,
   Wand2,
   CheckSquare,
   Square,
@@ -38,7 +38,6 @@ import { useDatasetStore } from '@/stores/dataset-store';
 
 export default function DatasetDetailPage() {
   const params = useParams();
-  const router = useRouter();
   const { toast } = useToast();
   const projectId = params.id as string;
   const datasetId = params.datasetId as string;
@@ -46,23 +45,15 @@ export default function DatasetDetailPage() {
   const labelClassesManagerRef = useRef<LabelClassesManagerRef>(null);
 
   // Use global store for selected images and job state (persists across navigation)
-  const {
-    getSelectedImages,
-    toggleImage,
-    selectAll,
-    deselectAll,
-    getJob,
-    startJob,
-    startPolling,
-    clearJob,
-  } = useDatasetStore();
+  const { getSelectedImages, toggleImage, selectAll, deselectAll, getJob, startJob, startPolling } =
+    useDatasetStore();
 
   const selectedImageIds = getSelectedImages(datasetId);
   const activeJob = getJob(datasetId);
 
   const [dataset, setDataset] = useState<Dataset | null>(null);
   const [images, setImages] = useState<Image[]>([]);
-  const [labelClasses, setLabelClasses] = useState<LabelClass[]>([]);
+  const [_labelClasses, setLabelClasses] = useState<LabelClass[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -73,7 +64,8 @@ export default function DatasetDetailPage() {
   const [showDeleteImagesConfirm, setShowDeleteImagesConfirm] = useState(false);
 
   // Derived state from active job
-  const isAutoAnnotating = activeJob?.jobType === 'auto-annotation' && 
+  const isAutoAnnotating =
+    activeJob?.jobType === 'auto-annotation' &&
     (activeJob.status === 'queued' || activeJob.status === 'running');
   const annotationProgress = activeJob?.progress || 0;
   const annotationImagesTotal = activeJob?.totalImages || 0;
@@ -213,7 +205,10 @@ export default function DatasetDetailPage() {
     if (selectedImageIds.size === images.length) {
       deselectAll(datasetId);
     } else {
-      selectAll(datasetId, images.map((img) => img.id));
+      selectAll(
+        datasetId,
+        images.map((img) => img.id)
+      );
     }
   };
 
@@ -436,9 +431,7 @@ export default function DatasetDetailPage() {
                       <p className="text-neutral-600">
                         Drag & drop images here, or click to select
                       </p>
-                      <p className="text-sm text-neutral-400 mt-2">
-                        Supports JPG, PNG up to 20MB
-                      </p>
+                      <p className="text-sm text-neutral-400 mt-2">Supports JPG, PNG up to 20MB</p>
                     </>
                   )}
                 </div>
@@ -468,7 +461,9 @@ export default function DatasetDetailPage() {
                             </button>
                           ) : (
                             <div className="flex items-center gap-2">
-                              <span className="text-sm text-red-600">Delete {selectedImageIds.size}?</span>
+                              <span className="text-sm text-red-600">
+                                Delete {selectedImageIds.size}?
+                              </span>
                               <button
                                 type="button"
                                 onClick={() => setShowDeleteImagesConfirm(false)}
