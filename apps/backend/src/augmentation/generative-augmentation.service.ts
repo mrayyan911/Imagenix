@@ -46,14 +46,13 @@ export class GenerativeAugmentationService {
   constructor(
     private configService: ConfigService,
     private runpodProvider: RunPodProvider,
-    private replicateProvider: ReplicateProvider,
+    private replicateProvider: ReplicateProvider
   ) {
-    this.isEnabled =
-      this.configService.get<string>('FEATURE_GENERATIVE_AUGMENTATION') === 'true';
+    this.isEnabled = this.configService.get<string>('FEATURE_GENERATIVE_AUGMENTATION') === 'true';
     this.provider = this.configService.get<string>('GENERATIVE_PROVIDER');
 
     this.logger.log(
-      `Generative augmentation: enabled=${this.isEnabled}, provider=${this.provider || 'none'}`,
+      `Generative augmentation: enabled=${this.isEnabled}, provider=${this.provider || 'none'}`
     );
   }
 
@@ -104,36 +103,28 @@ export class GenerativeAugmentationService {
     sourceImageBuffer: Buffer,
     variationType: string,
     prompt?: string,
-    sourceWidth?: number,
-    sourceHeight?: number,
+    _sourceWidth?: number,
+    _sourceHeight?: number
   ): Promise<GenerativeResult> {
     if (!this.isEnabled) {
       throw new Error(
-        'Generative augmentation is not enabled. Set FEATURE_GENERATIVE_AUGMENTATION=true',
+        'Generative augmentation is not enabled. Set FEATURE_GENERATIVE_AUGMENTATION=true'
       );
     }
 
     const resolvedPrompt = this.buildPrompt(variationType, prompt);
 
     if (this.provider === 'runpod') {
-      return this.generateWithRunPod(
-        sourceImageBuffer,
-        variationType,
-        resolvedPrompt,
-      );
+      return this.generateWithRunPod(sourceImageBuffer, variationType, resolvedPrompt);
     }
 
     if (this.provider === 'replicate') {
-      return this.generateWithReplicate(
-        sourceImageBuffer,
-        variationType,
-        resolvedPrompt,
-      );
+      return this.generateWithReplicate(sourceImageBuffer, variationType, resolvedPrompt);
     }
 
     throw new Error(
       `No valid GENERATIVE_PROVIDER configured. ` +
-      `Set GENERATIVE_PROVIDER to 'runpod' or 'replicate'.`,
+        `Set GENERATIVE_PROVIDER to 'runpod' or 'replicate'.`
     );
   }
 
@@ -142,7 +133,7 @@ export class GenerativeAugmentationService {
    */
   estimateCost(
     imageCount: number,
-    variationsPerImage: number,
+    variationsPerImage: number
   ): { credits: number; estimatedUSD: number } {
     const creditsPerGeneration = 1;
     const totalGenerations = imageCount * variationsPerImage;
@@ -157,11 +148,9 @@ export class GenerativeAugmentationService {
   private async generateWithRunPod(
     sourceBuffer: Buffer,
     variationType: string,
-    prompt: string,
+    prompt: string
   ): Promise<GenerativeResult> {
-    const safeTypes = [
-      'rain', 'snow', 'night', 'golden_hour', 'overcast', 'foggy', 'nature',
-    ];
+    const safeTypes = ['rain', 'snow', 'night', 'golden_hour', 'overcast', 'foggy', 'nature'];
 
     let lastResult: { buffer: Buffer; metadata: MLGenerationResult } | null = null;
     let validated = false;
@@ -171,7 +160,7 @@ export class GenerativeAugmentationService {
     for (let attempt = 1; attempt <= this.maxRetries; attempt++) {
       attempts = attempt;
       this.logger.log(
-        `[RunPod] Generation attempt ${attempt}/${this.maxRetries} for "${variationType}"`,
+        `[RunPod] Generation attempt ${attempt}/${this.maxRetries} for "${variationType}"`
       );
 
       try {
@@ -181,21 +170,21 @@ export class GenerativeAugmentationService {
           lastResult = await this.runpodProvider.generateSafeAugmentation(
             sourceBuffer,
             'source.png',
-            variationType,
+            variationType
           );
         } else {
           // Use controlnet-canny for free-form prompts
           lastResult = await this.runpodProvider.generateControlNetCanny(
             sourceBuffer,
             'source.png',
-            prompt,
+            prompt
           );
         }
 
         // Anti-hallucination: validate the generated image
         const validation = await this.runpodProvider.checkHallucination(
           sourceBuffer,
-          lastResult.buffer,
+          lastResult.buffer
         );
 
         similarityScore = validation.similarity_score;
@@ -204,23 +193,23 @@ export class GenerativeAugmentationService {
         if (validated) {
           this.logger.log(
             `[RunPod] Generation validated on attempt ${attempt}: ` +
-            `similarity=${similarityScore}`,
+              `similarity=${similarityScore}`
           );
           break;
         }
 
         this.logger.warn(
           `[RunPod] Hallucination detected on attempt ${attempt}: ` +
-          `similarity=${similarityScore} — ${attempt < this.maxRetries ? 'retrying' : 'giving up'}`,
+            `similarity=${similarityScore} — ${attempt < this.maxRetries ? 'retrying' : 'giving up'}`
         );
       } catch (error) {
         this.logger.error(
-          `[RunPod] Attempt ${attempt} failed: ${error instanceof Error ? error.message : error}`,
+          `[RunPod] Attempt ${attempt} failed: ${error instanceof Error ? error.message : error}`
         );
         if (attempt === this.maxRetries) {
           throw new Error(
             `Generative augmentation failed after ${this.maxRetries} attempts: ` +
-            `${error instanceof Error ? error.message : 'Unknown error'}`,
+              `${error instanceof Error ? error.message : 'Unknown error'}`
           );
         }
       }
@@ -252,14 +241,11 @@ export class GenerativeAugmentationService {
   private async generateWithReplicate(
     sourceBuffer: Buffer,
     variationType: string,
-    prompt: string,
+    prompt: string
   ): Promise<GenerativeResult> {
     this.logger.log(`[Replicate] Generating: type="${variationType}"`);
 
-    const result = await this.replicateProvider.generateControlNetCanny(
-      sourceBuffer,
-      prompt,
-    );
+    const result = await this.replicateProvider.generateControlNetCanny(sourceBuffer, prompt);
 
     const crypto = await import('crypto');
     const sha256 = crypto.createHash('sha256').update(result.buffer).digest('hex');

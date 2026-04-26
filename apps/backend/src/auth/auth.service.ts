@@ -129,14 +129,15 @@ export class AuthService {
       throw new UnauthorizedException('Session expired or revoked');
     }
 
-    // Verify token hash matches
-    const tokenHash = await this.hashToken(refreshToken);
-    // Note: In production, compare hashes securely
+    // TODO: compare token hashes securely before generating new tokens
 
     // Generate new tokens
     const user = session.user;
-    const { accessToken, refreshToken: newRefreshToken, expiresInSeconds } = 
-      await this.generateTokens(user, session.userAgent, session.ipAddress, session.id);
+    const {
+      accessToken,
+      refreshToken: newRefreshToken,
+      expiresInSeconds,
+    } = await this.generateTokens(user, session.userAgent, session.ipAddress, session.id);
 
     return {
       accessToken,

@@ -2,26 +2,15 @@
 // API Types - Request/Response contracts
 // ===========================================
 
-import {
-  DomainPolicy,
-  AnnotationStatus,
-  ExportFormat,
-  JobStatus,
-} from './enums';
+import { DomainPolicy, AnnotationStatus, ExportFormat, JobStatus } from './enums';
 import {
   User,
   UserPublic,
-  Project,
   ProjectWithStats,
-  Dataset,
   DatasetWithStats,
   LabelClass,
-  Image,
   ImageWithAnnotations,
-  Annotation,
   AnnotationWithClass,
-  Job,
-  Export,
 } from './entities';
 
 // ===========================================

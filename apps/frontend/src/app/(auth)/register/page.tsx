@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -28,7 +27,6 @@ const registerSchema = z.object({
 type RegisterForm = z.infer<typeof registerSchema>;
 
 export default function RegisterPage() {
-  const router = useRouter();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
@@ -71,9 +69,7 @@ export default function RegisterPage() {
               <CheckCircle className="h-6 w-6 text-success" />
             </div>
             <h2 className="text-xl font-semibold text-neutral-900 mb-2">Account Created!</h2>
-            <p className="text-neutral-600 mb-6">
-              Your account has been created successfully.
-            </p>
+            <p className="text-neutral-600 mb-6">Your account has been created successfully.</p>
             <Link href="/login">
               <Button className="w-full">Continue to Sign In</Button>
             </Link>
@@ -100,9 +96,7 @@ export default function RegisterPage() {
               {...register('fullName')}
               disabled={isLoading}
             />
-            {errors.fullName && (
-              <p className="text-sm text-error">{errors.fullName.message}</p>
-            )}
+            {errors.fullName && <p className="text-sm text-error">{errors.fullName.message}</p>}
           </div>
 
           <div className="space-y-2">
@@ -114,9 +108,7 @@ export default function RegisterPage() {
               {...register('email')}
               disabled={isLoading}
             />
-            {errors.email && (
-              <p className="text-sm text-error">{errors.email.message}</p>
-            )}
+            {errors.email && <p className="text-sm text-error">{errors.email.message}</p>}
           </div>
 
           <div className="space-y-2">
@@ -128,9 +120,7 @@ export default function RegisterPage() {
               {...register('password')}
               disabled={isLoading}
             />
-            {errors.password && (
-              <p className="text-sm text-error">{errors.password.message}</p>
-            )}
+            {errors.password && <p className="text-sm text-error">{errors.password.message}</p>}
             <p className="text-xs text-neutral-500">
               At least 8 characters with 1 letter and 1 number
             </p>

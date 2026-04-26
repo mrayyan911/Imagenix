@@ -6,22 +6,10 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { projectsApi, datasetsApi, labelClassesApi, type Project, type Dataset, type LabelClass } from '@/lib/api';
+import { projectsApi, datasetsApi, labelClassesApi } from '@/lib/api';
 import { useProjectStore } from '@/stores/project-store';
 import { useToast } from '@/hooks/use-toast';
-import {
-  ArrowLeft,
-  Plus,
-  FolderOpen,
-  Image,
-  Tag,
-  Loader2,
-  Database,
-  Trash2,
-} from 'lucide-react';
-import { formatDate } from '@/lib/utils';
-
+import { ArrowLeft, Plus, FolderOpen, Image, Tag, Loader2, Database, Trash2 } from 'lucide-react';
 export default function ProjectDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -237,7 +225,8 @@ export default function ProjectDetailPage() {
                           <div>
                             <h4 className="font-medium text-neutral-900">{dataset.name}</h4>
                             <p className="text-sm text-neutral-500">
-                              {dataset.imageCount || 0} images · {dataset.annotationCount || 0} annotations
+                              {dataset.imageCount || 0} images · {dataset.annotationCount || 0}{' '}
+                              annotations
                             </p>
                           </div>
                         </div>
@@ -276,9 +265,7 @@ export default function ProjectDetailPage() {
                 </div>
 
                 {labelClasses.length === 0 ? (
-                  <p className="text-sm text-neutral-500 text-center py-4">
-                    No label classes yet
-                  </p>
+                  <p className="text-sm text-neutral-500 text-center py-4">No label classes yet</p>
                 ) : (
                   <div className="space-y-2">
                     {labelClasses.map((cls) => (

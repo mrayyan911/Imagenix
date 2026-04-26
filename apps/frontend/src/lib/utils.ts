@@ -14,12 +14,16 @@ export function formatDate(date: Date | string): string {
   });
 }
 
-export function formatBytes(bytes: number): string {
+export function formatBytes(bytes: number, decimals?: number): string {
   if (bytes === 0) return '0 Bytes';
   const k = 1024;
   const sizes = ['Bytes', 'KB', 'MB', 'GB'];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  const value = bytes / Math.pow(k, i);
+  if (decimals !== undefined) {
+    return value.toFixed(decimals) + ' ' + sizes[i];
+  }
+  return parseFloat(value.toFixed(2)) + ' ' + sizes[i];
 }
 
 export function truncate(str: string, length: number): string {
