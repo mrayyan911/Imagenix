@@ -66,7 +66,9 @@ export class DatasetsService {
             id: true,
             isSynthetic: true,
             _count: {
-              select: { annotations: true },
+              select: {
+                annotations: { where: { deletedAt: null } },
+              },
             },
           },
         },
@@ -98,7 +100,10 @@ export class DatasetsService {
     };
   }
 
-  async verifyOwnership(datasetId: string, userId: string): Promise<{ dataset: { id: string; projectId: string } }> {
+  async verifyOwnership(
+    datasetId: string,
+    userId: string
+  ): Promise<{ dataset: { id: string; projectId: string } }> {
     const dataset = await this.prisma.dataset.findUnique({
       where: { id: datasetId },
       include: {

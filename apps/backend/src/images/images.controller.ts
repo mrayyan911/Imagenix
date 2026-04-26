@@ -10,6 +10,7 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
+import { SkipThrottle } from '@nestjs/throttler';
 import { ImagesService } from './images.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser, JwtPayload } from '../common/decorators/current-user.decorator';
@@ -43,6 +44,7 @@ export class ImagesController {
     return this.imagesService.commitImage(datasetId, user.sub, dto);
   }
 
+  @SkipThrottle()
   @Get('datasets/:datasetId/images')
   async findAll(
     @Param('datasetId') datasetId: string,
@@ -62,6 +64,7 @@ export class ImagesController {
     return this.imagesService.bulkDelete(datasetId, user.sub, dto.imageIds);
   }
 
+  @SkipThrottle()
   @Get('images/:id')
   async findOne(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
     return this.imagesService.findOne(id, user.sub);

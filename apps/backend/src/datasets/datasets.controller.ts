@@ -8,6 +8,7 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
+import { SkipThrottle } from '@nestjs/throttler';
 import { DatasetsService } from './datasets.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser, JwtPayload } from '../common/decorators/current-user.decorator';
@@ -28,6 +29,7 @@ export class DatasetsController {
     return this.datasetsService.create(projectId, user.sub, dto);
   }
 
+  @SkipThrottle()
   @Get('datasets/:id')
   async findOne(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
     return this.datasetsService.findOne(id, user.sub);

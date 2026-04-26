@@ -8,6 +8,7 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { ExportsService } from './exports.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser, JwtPayload } from '../common/decorators/current-user.decorator';
@@ -19,6 +20,7 @@ export class ExportsController {
   constructor(private exportsService: ExportsService) {}
 
   @Post('datasets/:datasetId/exports')
+  @Throttle({ long: { limit: 10, ttl: 60000 } })
   @HttpCode(HttpStatus.ACCEPTED)
   async createExport(
     @Param('datasetId') datasetId: string,

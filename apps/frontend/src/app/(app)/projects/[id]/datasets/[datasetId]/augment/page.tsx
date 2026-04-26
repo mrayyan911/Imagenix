@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -40,7 +40,6 @@ import {
   Eye,
   Shuffle,
   RefreshCw,
-  Zap,
 } from 'lucide-react';
 
 interface Transform {
@@ -53,7 +52,6 @@ type AugmentationMode = 'random' | 'classical' | 'generative';
 
 export default function AugmentationStudioPage() {
   const params = useParams();
-  const router = useRouter();
   const { toast } = useToast();
   const projectId = params.id as string;
   const datasetId = params.datasetId as string;
@@ -159,23 +157,17 @@ export default function AugmentationStudioPage() {
   };
 
   const toggleTransform = (index: number) => {
-    setTransforms((prev) =>
-      prev.map((t, i) => (i === index ? { ...t, enabled: !t.enabled } : t))
-    );
+    setTransforms((prev) => prev.map((t, i) => (i === index ? { ...t, enabled: !t.enabled } : t)));
     setPreviewData(null); // Clear preview when settings change
   };
 
   const updateTransformValue = (index: number, value: number) => {
-    setTransforms((prev) =>
-      prev.map((t, i) => (i === index ? { ...t, value } : t))
-    );
+    setTransforms((prev) => prev.map((t, i) => (i === index ? { ...t, value } : t)));
     setPreviewData(null);
   };
 
   const getEnabledTransforms = () =>
-    transforms
-      .filter((t) => t.enabled)
-      .map((t) => ({ type: t.type, value: t.value }));
+    transforms.filter((t) => t.enabled).map((t) => ({ type: t.type, value: t.value }));
 
   const handlePreview = async () => {
     const enabledTransforms = getEnabledTransforms();
@@ -226,7 +218,7 @@ export default function AugmentationStudioPage() {
 
     setIsPreviewing(true);
     try {
-      const seed = regenerate ? undefined : (randomSeed || undefined);
+      const seed = regenerate ? undefined : randomSeed || undefined;
       const response = await augmentationApi.previewRandom(imageId, {
         strength: randomStrength,
         seed,
@@ -256,17 +248,21 @@ export default function AugmentationStudioPage() {
     setIsProcessing(true);
     setJobProgress(0);
     setJobStartTime(Date.now());
-    
-    const targetImageIds = applyToAll 
-      ? undefined 
-      : (selectedImageIds.length > 0 ? selectedImageIds : undefined);
-    const imgCount = applyToAll 
-      ? images.filter(img => !img.isSynthetic).length 
-      : (selectedImageIds.length > 0 ? selectedImageIds.length : images.filter(img => !img.isSynthetic).length);
+
+    const targetImageIds = applyToAll
+      ? undefined
+      : selectedImageIds.length > 0
+        ? selectedImageIds
+        : undefined;
+    const imgCount = applyToAll
+      ? images.filter((img) => !img.isSynthetic).length
+      : selectedImageIds.length > 0
+        ? selectedImageIds.length
+        : images.filter((img) => !img.isSynthetic).length;
     const total = imgCount * randomMultiplier;
-    
+
     setJobLabel(`0 of ${total} images generated`);
-    
+
     try {
       const response = await augmentationApi.createRandom(datasetId, {
         strength: randomStrength,
@@ -309,7 +305,10 @@ export default function AugmentationStudioPage() {
     setIsProcessing(true);
     setJobProgress(0);
     setJobStartTime(Date.now());
-    const imgCount = selectedImageIds.length > 0 ? selectedImageIds.length : images.length;
+    const imgCount =
+      selectedImageIds.length > 0
+        ? selectedImageIds.length
+        : images.filter((img) => !img.isSynthetic).length;
     setJobLabel(`0 of ${imgCount * multiplier} images generated`);
     try {
       const response = await augmentationApi.createClassical(datasetId, {
@@ -365,7 +364,8 @@ export default function AugmentationStudioPage() {
     } catch (error: any) {
       toast({
         title: 'Error',
-        description: error.response?.data?.error?.message || 'Failed to start generative augmentation',
+        description:
+          error.response?.data?.error?.message || 'Failed to start generative augmentation',
         variant: 'destructive',
       });
       setIsProcessing(false);
@@ -439,7 +439,10 @@ export default function AugmentationStudioPage() {
   }
 
   const enabledCount = transforms.filter((t) => t.enabled).length;
-  const estimatedOutputImages = images.length * multiplier;
+  const sourceImageCount = images.filter((i) => !i.isSynthetic).length;
+  const classicalImgCount =
+    selectedImageIds.length > 0 ? selectedImageIds.length : sourceImageCount;
+  const estimatedOutputImages = classicalImgCount * multiplier;
 
   return (
     <div className="p-6">
@@ -467,84 +470,86 @@ export default function AugmentationStudioPage() {
         {(() => {
           const sourceImages = images.filter((img) => !img.isSynthetic);
           return sourceImages.length > 0 ? (
-          <Card className="mb-6">
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle>Select Images</CardTitle>
-                  <CardDescription>
-                    Choose which source images to augment. Leave unselected to augment all.
-                    {images.length !== sourceImages.length && (
-                      <span className="text-neutral-400 ml-1">
-                        ({images.length - sourceImages.length} synthetic images hidden)
-                      </span>
-                    )}
-                  </CardDescription>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-neutral-500">
-                    {selectedImageIds.length === 0
-                      ? `All ${sourceImages.length} source images`
-                      : `${selectedImageIds.length} of ${sourceImages.length} selected`}
-                  </span>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      if (selectedImageIds.length === sourceImages.length) {
-                        setSelectedImageIds([]);
-                      } else {
-                        setSelectedImageIds(sourceImages.map((img) => img.id));
-                      }
-                    }}
-                  >
-                    {selectedImageIds.length === sourceImages.length ? 'Deselect All' : 'Select All'}
-                  </Button>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-2 max-h-48 overflow-y-auto">
-                {sourceImages.map((img) => {
-                  const isSelected = selectedImageIds.includes(img.id);
-                  return (
-                    <button
-                      key={img.id}
+            <Card className="mb-6">
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle>Select Images</CardTitle>
+                    <CardDescription>
+                      Choose which source images to augment. Leave unselected to augment all.
+                      {images.length !== sourceImages.length && (
+                        <span className="text-neutral-400 ml-1">
+                          ({images.length - sourceImages.length} synthetic images hidden)
+                        </span>
+                      )}
+                    </CardDescription>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-neutral-500">
+                      {selectedImageIds.length === 0
+                        ? `All ${sourceImages.length} source images`
+                        : `${selectedImageIds.length} of ${sourceImages.length} selected`}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
                       onClick={() => {
-                        setSelectedImageIds((prev) =>
-                          isSelected
-                            ? prev.filter((id) => id !== img.id)
-                            : [...prev, img.id]
-                        );
+                        if (selectedImageIds.length === sourceImages.length) {
+                          setSelectedImageIds([]);
+                        } else {
+                          setSelectedImageIds(sourceImages.map((img) => img.id));
+                        }
                       }}
-                      className={`relative aspect-square rounded-md overflow-hidden border-2 transition-all ${
-                        isSelected
-                          ? 'border-primary-500 ring-2 ring-primary-200'
-                          : 'border-transparent hover:border-neutral-300'
-                      }`}
                     >
-                      {img.url ? (
-                        <img
-                          src={img.url}
-                          alt={img.fileName}
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <div className="w-full h-full bg-neutral-100 flex items-center justify-center">
-                          <span className="text-xs text-neutral-400 truncate px-1">{img.fileName}</span>
-                        </div>
-                      )}
-                      {isSelected && (
-                        <div className="absolute top-0.5 right-0.5 bg-primary-500 text-white rounded-full w-4 h-4 flex items-center justify-center">
-                          <CheckCircle className="h-3 w-3" />
-                        </div>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            </CardContent>
-          </Card>
+                      {selectedImageIds.length === sourceImages.length
+                        ? 'Deselect All'
+                        : 'Select All'}
+                    </Button>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-2 max-h-48 overflow-y-auto">
+                  {sourceImages.map((img) => {
+                    const isSelected = selectedImageIds.includes(img.id);
+                    return (
+                      <button
+                        key={img.id}
+                        onClick={() => {
+                          setSelectedImageIds((prev) =>
+                            isSelected ? prev.filter((id) => id !== img.id) : [...prev, img.id]
+                          );
+                        }}
+                        className={`relative aspect-square rounded-md overflow-hidden border-2 transition-all ${
+                          isSelected
+                            ? 'border-primary-500 ring-2 ring-primary-200'
+                            : 'border-transparent hover:border-neutral-300'
+                        }`}
+                      >
+                        {img.url ? (
+                          <img
+                            src={img.url}
+                            alt={img.fileName}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div className="w-full h-full bg-neutral-100 flex items-center justify-center">
+                            <span className="text-xs text-neutral-400 truncate px-1">
+                              {img.fileName}
+                            </span>
+                          </div>
+                        )}
+                        {isSelected && (
+                          <div className="absolute top-0.5 right-0.5 bg-primary-500 text-white rounded-full w-4 h-4 flex items-center justify-center">
+                            <CheckCircle className="h-3 w-3" />
+                          </div>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </CardContent>
+            </Card>
           ) : null;
         })()}
 
@@ -599,8 +604,8 @@ export default function AugmentationStudioPage() {
                     </span>
                   </CardTitle>
                   <CardDescription>
-                    Automatically apply random combinations of transforms to each image for model training.
-                    Each image receives a unique set of augmentations.
+                    Automatically apply random combinations of transforms to each image for model
+                    training. Each image receives a unique set of augmentations.
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -615,15 +620,26 @@ export default function AugmentationStudioPage() {
                     <div className="space-y-6">
                       {/* Strength Selector */}
                       <div>
-                        <label className="text-sm font-medium mb-3 block">Augmentation Strength</label>
+                        <label className="text-sm font-medium mb-3 block">
+                          Augmentation Strength
+                        </label>
                         <div className="grid grid-cols-3 gap-3">
                           {(['low', 'medium', 'high'] as const).map((strength) => {
                             const config = {
-                              low: { icon: Zap, desc: '1-2 light transforms', color: 'green' },
-                              medium: { icon: Zap, desc: '2-4 moderate transforms', color: 'yellow' },
-                              high: { icon: Zap, desc: '3-6 strong transforms', color: 'orange' },
+                              low: {
+                                desc: '1-2 light transforms',
+                                selected: 'border-green-500 bg-green-50',
+                              },
+                              medium: {
+                                desc: '2-4 moderate transforms',
+                                selected: 'border-yellow-500 bg-yellow-50',
+                              },
+                              high: {
+                                desc: '3-6 strong transforms',
+                                selected: 'border-orange-500 bg-orange-50',
+                              },
                             };
-                            const { desc, color } = config[strength];
+                            const { desc, selected } = config[strength];
                             const isSelected = randomStrength === strength;
                             return (
                               <button
@@ -634,7 +650,7 @@ export default function AugmentationStudioPage() {
                                 }}
                                 className={`p-4 rounded-lg border-2 transition-all text-left ${
                                   isSelected
-                                    ? `border-${color}-500 bg-${color}-50`
+                                    ? selected
                                     : 'border-neutral-200 hover:border-neutral-300'
                                 }`}
                               >
@@ -669,7 +685,10 @@ export default function AugmentationStudioPage() {
                         <div className="flex items-center justify-between mb-2">
                           <label className="font-medium">Copies per Image</label>
                           <span className="text-sm text-neutral-500">
-                            Will create {(selectedImageIds.length || images.filter(i => !i.isSynthetic).length) * randomMultiplier} new images
+                            Will create{' '}
+                            {(selectedImageIds.length ||
+                              images.filter((i) => !i.isSynthetic).length) * randomMultiplier}{' '}
+                            new images
                           </span>
                         </div>
                         <Slider
@@ -687,7 +706,9 @@ export default function AugmentationStudioPage() {
 
                       {/* Features */}
                       <div className="p-4 bg-blue-50 rounded-lg">
-                        <div className="text-sm font-medium text-blue-900 mb-2">What this does:</div>
+                        <div className="text-sm font-medium text-blue-900 mb-2">
+                          What this does:
+                        </div>
                         <ul className="text-sm text-blue-800 space-y-1">
                           <li className="flex items-center gap-2">
                             <CheckCircle className="h-3.5 w-3.5" />
@@ -707,7 +728,8 @@ export default function AugmentationStudioPage() {
                           </li>
                         </ul>
                         <p className="text-xs text-blue-600 mt-2">
-                          Note: Augmented images are created without annotations. Add annotations manually if needed.
+                          Note: Augmented images are created without annotations. Add annotations
+                          manually if needed.
                         </p>
                       </div>
 
@@ -744,7 +766,7 @@ export default function AugmentationStudioPage() {
                           ) : (
                             <Play className="h-4 w-4 mr-2" />
                           )}
-                          {selectedImageIds.length > 0 
+                          {selectedImageIds.length > 0
                             ? `Apply to ${selectedImageIds.length} Selected`
                             : 'Apply to All Images'}
                         </Button>
@@ -816,7 +838,9 @@ export default function AugmentationStudioPage() {
                                   </span>
                                 </div>
                                 <Slider
-                                  value={[transforms[index]?.value || transform.valueRange!.default]}
+                                  value={[
+                                    transforms[index]?.value || transform.valueRange!.default,
+                                  ]}
                                   min={transform.valueRange!.min}
                                   max={transform.valueRange!.max}
                                   step={0.1}
@@ -892,100 +916,101 @@ export default function AugmentationStudioPage() {
 
             {/* Generative Augmentation */}
             {augmentationMode === 'generative' && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Sparkles className="h-5 w-5" />
-                  Generative Augmentation
-                </CardTitle>
-                <CardDescription>
-                  AI-generated variations using Stable Diffusion, DALL-E, or other models
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                {!capabilities?.generative.enabled ? (
-                  <div className="flex items-center gap-3 p-4 bg-neutral-100 text-neutral-600 rounded-lg">
-                    <AlertCircle className="h-5 w-5" />
-                    <div>
-                      <p className="text-sm font-medium">Generative augmentation is disabled</p>
-                      <p className="text-xs mt-1">
-                        Set FEATURE_GENERATIVE_AUGMENTATION=true and configure GENERATIVE_PROVIDER
-                      </p>
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Sparkles className="h-5 w-5" />
+                    Generative Augmentation
+                  </CardTitle>
+                  <CardDescription>
+                    AI-generated variations using Stable Diffusion, DALL-E, or other models
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {!capabilities?.generative.enabled ? (
+                    <div className="flex items-center gap-3 p-4 bg-neutral-100 text-neutral-600 rounded-lg">
+                      <AlertCircle className="h-5 w-5" />
+                      <div>
+                        <p className="text-sm font-medium">Generative augmentation is disabled</p>
+                        <p className="text-xs mt-1">
+                          Set FEATURE_GENERATIVE_AUGMENTATION=true and configure GENERATIVE_PROVIDER
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                ) : !capabilities?.generative.available ? (
-                  <div className="flex items-center gap-3 p-4 bg-yellow-50 text-yellow-800 rounded-lg">
-                    <AlertCircle className="h-5 w-5" />
-                    <div>
-                      <p className="text-sm font-medium">No provider configured</p>
-                      <p className="text-xs mt-1">
-                        Configure GENERATIVE_PROVIDER (openai, stability, replicate, local) and API key
-                      </p>
+                  ) : !capabilities?.generative.available ? (
+                    <div className="flex items-center gap-3 p-4 bg-yellow-50 text-yellow-800 rounded-lg">
+                      <AlertCircle className="h-5 w-5" />
+                      <div>
+                        <p className="text-sm font-medium">No provider configured</p>
+                        <p className="text-xs mt-1">
+                          Configure GENERATIVE_PROVIDER (openai, stability, replicate, local) and
+                          API key
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    <div>
-                      <label className="text-sm font-medium">Variation Type</label>
-                      <select
-                        className="mt-1 w-full h-10 px-3 rounded-md border border-neutral-300 bg-white text-sm"
-                        value={generativeVariation}
-                        onChange={(e) => setGenerativeVariation(e.target.value)}
+                  ) : (
+                    <div className="space-y-4">
+                      <div>
+                        <label className="text-sm font-medium">Variation Type</label>
+                        <select
+                          className="mt-1 w-full h-10 px-3 rounded-md border border-neutral-300 bg-white text-sm"
+                          value={generativeVariation}
+                          onChange={(e) => setGenerativeVariation(e.target.value)}
+                        >
+                          {capabilities.generative.variations.map((v) => (
+                            <option key={v} value={v}>
+                              {v.charAt(0).toUpperCase() + v.slice(1).replace('_', ' ')}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium">Custom Prompt (optional)</label>
+                        <Input
+                          className="mt-1"
+                          placeholder="e.g., rainy weather, night time"
+                          value={generativePrompt}
+                          onChange={(e) => setGenerativePrompt(e.target.value)}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium">
+                          Generations per Image: {generativeQuantity}
+                        </label>
+                        <Slider
+                          className="mt-2"
+                          value={[generativeQuantity]}
+                          min={1}
+                          max={5}
+                          step={1}
+                          onValueChange={([v]) => setGenerativeQuantity(v)}
+                        />
+                      </div>
+                      <Button
+                        className="w-full"
+                        onClick={handleRunGenerative}
+                        disabled={isProcessing || images.length === 0}
                       >
-                        {capabilities.generative.variations.map((v) => (
-                          <option key={v} value={v}>
-                            {v.charAt(0).toUpperCase() + v.slice(1).replace('_', ' ')}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium">Custom Prompt (optional)</label>
-                      <Input
-                        className="mt-1"
-                        placeholder="e.g., rainy weather, night time"
-                        value={generativePrompt}
-                        onChange={(e) => setGenerativePrompt(e.target.value)}
-                      />
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium">
-                        Generations per Image: {generativeQuantity}
-                      </label>
-                      <Slider
-                        className="mt-2"
-                        value={[generativeQuantity]}
-                        min={1}
-                        max={5}
-                        step={1}
-                        onValueChange={([v]) => setGenerativeQuantity(v)}
-                      />
-                    </div>
-                    <Button
-                      className="w-full"
-                      onClick={handleRunGenerative}
-                      disabled={isProcessing || images.length === 0}
-                    >
-                      {isProcessing ? (
-                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                      ) : (
-                        <Sparkles className="h-4 w-4 mr-2" />
-                      )}
-                      Generate Variations
-                    </Button>
+                        {isProcessing ? (
+                          <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                        ) : (
+                          <Sparkles className="h-4 w-4 mr-2" />
+                        )}
+                        Generate Variations
+                      </Button>
 
-                    {/* Progress bar for generative augmentation */}
-                    {isProcessing && jobProgress >= 0 && (
-                      <Progress
-                        value={jobProgress}
-                        label={jobLabel}
-                        estimatedTime={getEstimatedTime(jobProgress, jobStartTime)}
-                      />
-                    )}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+                      {/* Progress bar for generative augmentation */}
+                      {isProcessing && jobProgress >= 0 && (
+                        <Progress
+                          value={jobProgress}
+                          label={jobLabel}
+                          estimatedTime={getEstimatedTime(jobProgress, jobStartTime)}
+                        />
+                      )}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
             )}
           </div>
 
@@ -994,9 +1019,7 @@ export default function AugmentationStudioPage() {
             <Card>
               <CardHeader>
                 <CardTitle>Preview</CardTitle>
-                <CardDescription>
-                  See how augmentation affects your images
-                </CardDescription>
+                <CardDescription>See how augmentation affects your images</CardDescription>
               </CardHeader>
               <CardContent>
                 {images.length === 0 ? (
@@ -1065,13 +1088,17 @@ export default function AugmentationStudioPage() {
                                 className="px-2 py-0.5 bg-neutral-100 text-neutral-700 rounded text-xs"
                               >
                                 {t.type}
-                                {t.value !== undefined && `: ${typeof t.value === 'number' ? t.value.toFixed(2) : t.value}`}
+                                {t.value !== undefined &&
+                                  `: ${typeof t.value === 'number' ? t.value.toFixed(2) : t.value}`}
                               </span>
                             ))}
                           </div>
                         </div>
                         <div className="text-xs text-neutral-500">
-                          Seed: <code className="bg-neutral-100 px-1 rounded">{randomPreviewData.seed}</code>
+                          Seed:{' '}
+                          <code className="bg-neutral-100 px-1 rounded">
+                            {randomPreviewData.seed}
+                          </code>
                         </div>
                       </div>
                     )}
@@ -1106,7 +1133,7 @@ export default function AugmentationStudioPage() {
               <CardContent className="space-y-3">
                 <div className="flex justify-between text-sm">
                   <span className="text-neutral-500">Source Images</span>
-                  <span className="font-medium">{images.filter(i => !i.isSynthetic).length}</span>
+                  <span className="font-medium">{images.filter((i) => !i.isSynthetic).length}</span>
                 </div>
                 {augmentationMode === 'random' ? (
                   <>
@@ -1122,7 +1149,8 @@ export default function AugmentationStudioPage() {
                     <div className="flex justify-between text-sm font-medium">
                       <span>Output Images</span>
                       <span className="text-primary-600">
-                        {(selectedImageIds.length || images.filter(i => !i.isSynthetic).length) * randomMultiplier}
+                        {(selectedImageIds.length || images.filter((i) => !i.isSynthetic).length) *
+                          randomMultiplier}
                       </span>
                     </div>
                   </>

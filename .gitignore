@@ -14,12 +14,17 @@ out
 coverage
 .nyc_output
 
-# Environment files
+# Environment files — never commit real credentials
 .env
 .env.local
+.env.development
 .env.development.local
+.env.test
 .env.test.local
+.env.production
 .env.production.local
+.env.staging
+*.env
 
 # IDE
 .idea

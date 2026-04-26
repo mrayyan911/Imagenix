@@ -1,8 +1,4 @@
-import {
-  Injectable,
-  BadRequestException,
-  NotFoundException,
-} from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
@@ -11,8 +7,8 @@ import { DatasetsService } from '../datasets/datasets.service';
 import { ClassicalAugmentationService } from './classical-augmentation.service';
 import { GenerativeAugmentationService } from './generative-augmentation.service';
 import { RandomAugmentationService } from './random-augmentation.service';
-import { 
-  CreateClassicalAugmentationDto, 
+import {
+  CreateClassicalAugmentationDto,
   CreateGenerativeAugmentationDto,
   CreateRandomAugmentationDto,
 } from './dto/create-augmentation-job.dto';
@@ -33,7 +29,8 @@ export class AugmentationService {
     private configService: ConfigService
   ) {
     this.classicalEnabled = this.configService.get<string>('FEATURE_AUGMENTATION') === 'true';
-    this.generativeEnabled = this.configService.get<string>('FEATURE_GENERATIVE_AUGMENTATION') === 'true';
+    this.generativeEnabled =
+      this.configService.get<string>('FEATURE_GENERATIVE_AUGMENTATION') === 'true';
   }
 
   /**
@@ -46,14 +43,54 @@ export class AugmentationService {
         transforms: [
           { type: 'flip_horizontal', name: 'Horizontal Flip', requiresValue: false },
           { type: 'flip_vertical', name: 'Vertical Flip', requiresValue: false },
-          { type: 'rotate', name: 'Rotate', requiresValue: true, valueRange: { min: -180, max: 180, default: 90 } },
-          { type: 'brightness', name: 'Brightness', requiresValue: true, valueRange: { min: 0.5, max: 2.0, default: 1.2 } },
-          { type: 'contrast', name: 'Contrast', requiresValue: true, valueRange: { min: 0.5, max: 2.0, default: 1.2 } },
-          { type: 'saturation', name: 'Saturation', requiresValue: true, valueRange: { min: 0, max: 3.0, default: 1.3 } },
-          { type: 'blur', name: 'Blur', requiresValue: true, valueRange: { min: 0.5, max: 10, default: 2 } },
-          { type: 'noise', name: 'Add Noise', requiresValue: true, valueRange: { min: 0.5, max: 3, default: 1 } },
-          { type: 'scale', name: 'Scale', requiresValue: true, valueRange: { min: 0.5, max: 1.5, default: 0.8 } },
-          { type: 'crop', name: 'Random Crop', requiresValue: true, valueRange: { min: 0.5, max: 0.95, default: 0.8 } },
+          {
+            type: 'rotate',
+            name: 'Rotate',
+            requiresValue: true,
+            valueRange: { min: -180, max: 180, default: 90 },
+          },
+          {
+            type: 'brightness',
+            name: 'Brightness',
+            requiresValue: true,
+            valueRange: { min: 0.5, max: 2.0, default: 1.2 },
+          },
+          {
+            type: 'contrast',
+            name: 'Contrast',
+            requiresValue: true,
+            valueRange: { min: 0.5, max: 2.0, default: 1.2 },
+          },
+          {
+            type: 'saturation',
+            name: 'Saturation',
+            requiresValue: true,
+            valueRange: { min: 0, max: 3.0, default: 1.3 },
+          },
+          {
+            type: 'blur',
+            name: 'Blur',
+            requiresValue: true,
+            valueRange: { min: 0.5, max: 10, default: 2 },
+          },
+          {
+            type: 'noise',
+            name: 'Add Noise',
+            requiresValue: true,
+            valueRange: { min: 0.5, max: 3, default: 1 },
+          },
+          {
+            type: 'scale',
+            name: 'Scale',
+            requiresValue: true,
+            valueRange: { min: 0.5, max: 1.5, default: 0.8 },
+          },
+          {
+            type: 'crop',
+            name: 'Random Crop',
+            requiresValue: true,
+            valueRange: { min: 0.5, max: 0.95, default: 0.8 },
+          },
         ],
       },
       generative: {
@@ -133,7 +170,7 @@ export class AugmentationService {
     if (!this.generativeAugmentation.isAvailable()) {
       throw new BadRequestException(
         'Generative augmentation is enabled but no provider is configured. ' +
-        'Please configure GENERATIVE_PROVIDER and the corresponding API key.'
+          'Please configure GENERATIVE_PROVIDER and the corresponding API key.'
       );
     }
 
@@ -141,7 +178,8 @@ export class AugmentationService {
     await this.datasetsService.verifyOwnership(datasetId, userId);
 
     // Get cost estimate
-    const imageCount = dto.imageIds?.length || await this.prisma.image.count({ where: { datasetId } });
+    const imageCount =
+      dto.imageIds?.length || (await this.prisma.image.count({ where: { datasetId } }));
     const estimate = this.generativeAugmentation.estimateCost(imageCount, dto.quantity || 1);
 
     // Create job record
@@ -168,8 +206,8 @@ export class AugmentationService {
       console.error(`[Augmentation] Generative job ${job.id} failed:`, err);
     });
 
-    return { 
-      jobId: job.id, 
+    return {
+      jobId: job.id,
       status: 'queued',
       estimate,
     };
@@ -231,6 +269,7 @@ export class AugmentationService {
           },
         },
         annotations: {
+          where: { deletedAt: null },
           include: { labelClass: true },
         },
       },
@@ -314,6 +353,7 @@ export class AugmentationService {
           },
         },
         annotations: {
+          where: { deletedAt: null },
           include: { labelClass: true },
         },
       },
@@ -407,7 +447,6 @@ export class AugmentationService {
 
       const images = await this.prisma.image.findMany({
         where: whereClause,
-        include: { annotations: true },
       });
 
       const totalOperations = images.length * metadata.multiplier;
@@ -416,78 +455,62 @@ export class AugmentationService {
 
       const CONCURRENCY = 3;
 
-      const processImage = async (image: typeof images[0]) => {
+      const processImage = async (image: (typeof images)[0]) => {
         const imageBuffer = await this.storageService.downloadFile(image.fileKey);
 
         const variants = Array.from({ length: metadata.multiplier }, (_, i) => i);
 
         // Process all multiplier variants for this image in parallel
-        await Promise.all(variants.map(async (i) => {
-          const result = await this.classicalAugmentation.augmentImage(
-            imageBuffer,
-            metadata.transforms,
-            image.width,
-            image.height
-          );
+        await Promise.all(
+          variants.map(async (i) => {
+            const result = await this.classicalAugmentation.augmentImage(
+              imageBuffer,
+              metadata.transforms,
+              image.width,
+              image.height
+            );
 
-          const fileName = `aug_${i}_${image.fileName}`;
-          const fileKey = this.storageService.generateFileKey(job.datasetId, fileName);
+            const fileName = `aug_${i}_${image.fileName}`;
+            const fileKey = this.storageService.generateFileKey(job.datasetId, fileName);
 
-          const [newImage] = await Promise.all([
-            this.prisma.image.create({
-              data: {
-                datasetId: job.datasetId,
-                fileKey,
-                fileName,
-                mimeType: image.mimeType,
-                width: result.width,
-                height: result.height,
-                sha256: result.sha256,
-                isSynthetic: true,
-                syntheticSource: 'classical_augmentation',
-              },
-            }),
-            this.storageService.uploadFile(fileKey, result.buffer, image.mimeType),
-          ]);
+            try {
+              await Promise.all([
+                this.prisma.image.create({
+                  data: {
+                    datasetId: job.datasetId,
+                    fileKey,
+                    fileName,
+                    mimeType: image.mimeType,
+                    width: result.width,
+                    height: result.height,
+                    sha256: result.sha256,
+                    isSynthetic: true,
+                    syntheticSource: 'classical_augmentation',
+                  },
+                }),
+                this.storageService.uploadFile(fileKey, result.buffer, image.mimeType),
+              ]);
+            } catch (dbErr: unknown) {
+              if ((dbErr as { code?: string })?.code === 'P2002') {
+                completed++;
+                const progress = Math.round((completed / totalOperations) * 100);
+                if (progress !== lastReportedProgress) {
+                  lastReportedProgress = progress;
+                  await this.prisma.job.update({ where: { id: jobId }, data: { progress } });
+                }
+                return;
+              }
+              throw dbErr;
+            }
 
-          const validAnnotations = this.classicalAugmentation.transformAnnotations(
-            image.annotations.map((a) => ({
-              id: a.id,
-              labelClassId: a.labelClassId,
-              x: a.x,
-              y: a.y,
-              width: a.width,
-              height: a.height,
-            })),
-            metadata.transforms,
-            image.width,
-            image.height,
-            result.width,
-            result.height
-          ).filter((a) => a.isValid);
-
-          if (validAnnotations.length > 0) {
-            await this.prisma.annotation.createMany({
-              data: validAnnotations.map((ann) => ({
-                imageId: newImage.id,
-                labelClassId: ann.labelClassId,
-                x: ann.x,
-                y: ann.y,
-                width: ann.width,
-                height: ann.height,
-                source: 'auto',
-                status: 'approved',
-              })),
-            });
-          }
-
-          completed++;
-          const progress = Math.round((completed / totalOperations) * 100);
-          if (progress !== lastReportedProgress) {
-            lastReportedProgress = progress;
-            await this.prisma.job.update({ where: { id: jobId }, data: { progress } });
-          }
-        }));
+            completed++;
+            const progress = Math.round((completed / totalOperations) * 100);
+            if (progress !== lastReportedProgress) {
+              lastReportedProgress = progress;
+              await this.prisma.job.update({ where: { id: jobId }, data: { progress } });
+            }
+          })
+        );
       };
 
       // Process images in parallel batches
@@ -565,13 +588,13 @@ export class AugmentationService {
             metadata.variationType,
             metadata.prompt,
             image.width,
-            image.height,
+            image.height
           );
 
           // Upload generated image to storage
           const fileKey = this.storageService.generateFileKey(
             job.datasetId,
-            `gen_${metadata.variationType}_${i}_${image.fileName}`,
+            `gen_${metadata.variationType}_${i}_${image.fileName}`
           );
           await this.storageService.uploadFile(fileKey, result.buffer, 'image/png');
 
@@ -594,7 +617,7 @@ export class AugmentationService {
             if (dbErr?.code === 'P2002') {
               // Duplicate sha256 — skip this image (Replicate returned an identical result)
               console.warn(
-                `[Augmentation] Skipping duplicate image (same sha256 already exists in dataset): iteration=${i}`,
+                `[Augmentation] Skipping duplicate image (same sha256 already exists in dataset): iteration=${i}`
               );
               continue;
             }
@@ -610,8 +633,8 @@ export class AugmentationService {
 
           console.log(
             `[Augmentation] Generative job ${jobId}: ${completed}/${totalOperations} — ` +
-            `validated=${result.validated}, similarity=${result.similarityScore}, ` +
-            `attempts=${result.attempts}`,
+              `validated=${result.validated}, similarity=${result.similarityScore}, ` +
+              `attempts=${result.attempts}`
           );
         }
       }
@@ -622,8 +645,7 @@ export class AugmentationService {
       });
 
       console.log(
-        `[Augmentation] Generative job ${jobId} completed: ` +
-        `${totalOperations} images generated`,
+        `[Augmentation] Generative job ${jobId} completed: ` + `${totalOperations} images generated`
       );
     } catch (error) {
       await this.prisma.job.update({
@@ -678,58 +700,60 @@ export class AugmentationService {
       const ext = (fileName: string) => fileName.match(/\.[^/.]+$/)?.[0] || '.jpg';
       const stem = (fileName: string) => fileName.replace(/\.[^/.]+$/, '');
 
-      const processImage = async (image: typeof images[0]) => {
+      const processImage = async (image: (typeof images)[0]) => {
         const imageBuffer = await this.storageService.downloadFile(image.fileKey);
         const variants = Array.from({ length: metadata.multiplier }, (_, i) => i);
 
-        await Promise.all(variants.map(async (i) => {
-          const imageSeed = this.randomAugmentation.generateImageSeed(
-            metadata.seed || undefined,
-            `${image.id}-${i}`
-          );
+        await Promise.all(
+          variants.map(async (i) => {
+            const imageSeed = this.randomAugmentation.generateImageSeed(
+              metadata.seed || undefined,
+              `${image.id}-${i}`
+            );
 
-          const transforms = this.randomAugmentation.selectRandomTransforms(
-            metadata.strength,
-            imageSeed,
-            image.width,
-            image.height
-          );
+            const transforms = this.randomAugmentation.selectRandomTransforms(
+              metadata.strength,
+              imageSeed,
+              image.width,
+              image.height
+            );
 
-          const result = await this.randomAugmentation.applyRandomAugmentation(
-            imageBuffer,
-            transforms,
-            image.width,
-            image.height
-          );
+            const result = await this.randomAugmentation.applyRandomAugmentation(
+              imageBuffer,
+              transforms,
+              image.width,
+              image.height
+            );
 
-          const fileName = `${stem(image.fileName)}_aug_${String(i).padStart(3, '0')}${ext(image.fileName)}`;
-          const fileKey = this.storageService.generateFileKey(job.datasetId, fileName);
+            const fileName = `${stem(image.fileName)}_aug_${String(i).padStart(3, '0')}${ext(image.fileName)}`;
+            const fileKey = this.storageService.generateFileKey(job.datasetId, fileName);
 
-          await Promise.all([
-            this.prisma.image.create({
-              data: {
-                datasetId: job.datasetId,
-                fileKey,
-                fileName,
-                mimeType: image.mimeType,
-                width: result.width,
-                height: result.height,
-                sha256: result.sha256,
-                isSynthetic: true,
-                syntheticSource: 'random_augmentation',
-              },
-            }),
-            this.storageService.uploadFile(fileKey, result.buffer, image.mimeType),
-          ]);
+            await Promise.all([
+              this.prisma.image.create({
+                data: {
+                  datasetId: job.datasetId,
+                  fileKey,
+                  fileName,
+                  mimeType: image.mimeType,
+                  width: result.width,
+                  height: result.height,
+                  sha256: result.sha256,
+                  isSynthetic: true,
+                  syntheticSource: 'random_augmentation',
+                },
+              }),
+              this.storageService.uploadFile(fileKey, result.buffer, image.mimeType),
+            ]);
 
-          totalCreated++;
-          completed++;
-          const progress = Math.round((completed / totalOperations) * 100);
-          if (progress !== lastReportedProgress) {
-            lastReportedProgress = progress;
-            await this.prisma.job.update({ where: { id: jobId }, data: { progress } });
-          }
-        }));
+            totalCreated++;
+            completed++;
+            const progress = Math.round((completed / totalOperations) * 100);
+            if (progress !== lastReportedProgress) {
+              lastReportedProgress = progress;
+              await this.prisma.job.update({ where: { id: jobId }, data: { progress } });
+            }
+          })
+        );
       };
 
       for (let i = 0; i < images.length; i += CONCURRENCY) {

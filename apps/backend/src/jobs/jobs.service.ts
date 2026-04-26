@@ -3,6 +3,7 @@ import {
   NotFoundException,
   ConflictException,
   ForbiddenException,
+  Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
@@ -12,6 +13,8 @@ import { CreateAutoAnnotationJobDto } from './dto/create-auto-annotation-job.dto
 
 @Injectable()
 export class JobsService {
+  private readonly logger = new Logger(JobsService.name);
+
   constructor(
     private prisma: PrismaService,
     private redisService: RedisService,
@@ -43,9 +46,15 @@ export class JobsService {
       },
     });
 
+    this.logger.log(
+      `job.create type=auto_annotation jobId=${job.id} datasetId=${datasetId} userId=${userId}`
+    );
+
     // Start job processing asynchronously
     this.processAutoAnnotationJob(job.id).catch((err) => {
-      console.error(`Job ${job.id} failed:`, err);
+      this.logger.error(
+        `job.failed jobId=${job.id} error=${err instanceof Error ? err.message : err}`
+      );
     });
 
     return {

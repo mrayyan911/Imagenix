@@ -10,6 +10,7 @@ import {
   HttpStatus,
   Query,
 } from '@nestjs/common';
+import { SkipThrottle } from '@nestjs/throttler';
 import { LabelClassesService } from './label-classes.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser, JwtPayload } from '../common/decorators/current-user.decorator';
@@ -31,6 +32,7 @@ export class LabelClassesController {
     return this.labelClassesService.create(projectId, user.sub, dto);
   }
 
+  @SkipThrottle()
   @Get()
   async findAll(
     @Param('projectId') projectId: string,

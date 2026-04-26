@@ -1,32 +1,20 @@
 'use client';
 
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import {
   imagesApi,
   annotationsApi,
   labelClassesApi,
-  type Image,
   type Annotation,
   type LabelClass,
 } from '@/lib/api';
 import { useAnnotationStore } from '@/stores/annotation-store';
 import { useToast } from '@/hooks/use-toast';
-import {
-  ArrowLeft,
-  ArrowRight,
-  Trash2,
-  Check,
-  X,
-  Loader2,
-  MousePointer,
-  Square,
-  Plus,
-} from 'lucide-react';
+import { ArrowLeft, Trash2, Check, X, Loader2, Plus } from 'lucide-react';
 
 const PRESET_COLORS = [
   '#3B82F6', // Blue
@@ -47,7 +35,6 @@ const HANDLE_SIZE = 8;
 
 export default function AnnotatePage() {
   const params = useParams();
-  const router = useRouter();
   const { toast } = useToast();
   const projectId = params.id as string;
   const datasetId = params.datasetId as string;
@@ -79,6 +66,7 @@ export default function AnnotatePage() {
 
   const [isLoading, setIsLoading] = useState(true);
   const [loadedImage, setLoadedImage] = useState<HTMLImageElement | null>(null);
+  const [isImageFitted, setIsImageFitted] = useState(false);
   const [scale, setScale] = useState(1);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [drawStart, setDrawStart] = useState<{ x: number; y: number } | null>(null);
@@ -94,33 +82,43 @@ export default function AnnotatePage() {
   const [isResizing, setIsResizing] = useState(false);
   const [resizeHandle, setResizeHandle] = useState<ResizeHandle>(null);
   const [resizeStart, setResizeStart] = useState<{ x: number; y: number } | null>(null);
-  const [originalBox, setOriginalBox] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
+  const [originalBox, setOriginalBox] = useState<{
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  } | null>(null);
   const [hoveredHandle, setHoveredHandle] = useState<ResizeHandle>(null);
 
   // Load image and annotations
+
+  // Load label classes once
   useEffect(() => {
-    async function loadData() {
+    labelClassesApi
+      .list(projectId)
+      .then((res) => {
+        const classesData = res.data.data;
+        if (classesData) {
+          setLabelClasses(classesData.classes);
+          if (classesData.classes.length > 0) {
+            selectLabelClass(classesData.classes[0].id);
+          }
+        }
+      })
+      .catch(() => {});
+  }, [projectId]);
+
+  // Load image data
+  useEffect(() => {
+    async function loadImage() {
       try {
-        const [imageRes, classesRes] = await Promise.all([
-          imagesApi.get(imageId),
-          labelClassesApi.list(projectId),
-        ]);
-
+        const imageRes = await imagesApi.get(imageId);
         const imageData = imageRes.data.data;
-        const classesData = classesRes.data.data;
-
         if (imageData) {
           setCurrentImage(imageData.image, imageData.url);
           setAnnotations(imageData.image.annotations || []);
         }
-
-        if (classesData) {
-          setLabelClasses(classesData.classes);
-          if (classesData.classes.length > 0 && !selectedLabelClassId) {
-            selectLabelClass(classesData.classes[0].id);
-          }
-        }
-      } catch (error) {
+      } catch (error: any) {
         toast({
           title: 'Error',
           description: 'Failed to load image',
@@ -131,12 +129,13 @@ export default function AnnotatePage() {
       }
     }
 
-    loadData();
-  }, [imageId, projectId, setCurrentImage, setAnnotations, setLabelClasses, selectLabelClass, toast]);
+    loadImage();
+  }, [imageId]);
 
   // Load actual image for canvas
   useEffect(() => {
     if (imageUrl) {
+      setIsImageFitted(false);
       const img = new window.Image();
       img.crossOrigin = 'anonymous';
       img.onload = () => {
@@ -151,21 +150,38 @@ export default function AnnotatePage() {
   const calculateScale = useCallback((img: HTMLImageElement) => {
     if (!containerRef.current) return;
     const container = containerRef.current;
-    const maxWidth = container.clientWidth - 40;
-    const maxHeight = container.clientHeight - 40;
+    const w = container.clientWidth;
+    const h = container.clientHeight;
+    if (w === 0 || h === 0) return;
+    const maxWidth = w - 40;
+    const maxHeight = h - 40;
     const scaleX = maxWidth / img.width;
     const scaleY = maxHeight / img.height;
     const newScale = Math.min(scaleX, scaleY, 1);
     setScale(newScale);
     setOffset({
-      x: (container.clientWidth - img.width * newScale) / 2,
-      y: (container.clientHeight - img.height * newScale) / 2,
+      x: (w - img.width * newScale) / 2,
+      y: (h - img.height * newScale) / 2,
     });
+    setIsImageFitted(true);
   }, []);
+
+  // Recalculate scale whenever the container is resized or loading finishes
+  useEffect(() => {
+    if (!containerRef.current || !loadedImage) return;
+    calculateScale(loadedImage);
+    const observer = new ResizeObserver(() => {
+      calculateScale(loadedImage);
+    });
+    observer.observe(containerRef.current);
+    return () => {
+      observer.disconnect();
+    };
+  }, [loadedImage, isLoading, calculateScale]);
 
   // Draw canvas
   useEffect(() => {
-    if (!canvasRef.current || !loadedImage || !containerRef.current) return;
+    if (!canvasRef.current || !loadedImage || !containerRef.current || !isImageFitted) return;
 
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
@@ -227,11 +243,7 @@ export default function AnnotatePage() {
       ctx.fillRect(ann.x, ann.y - 20 / scale, 80 / scale, 20 / scale);
       ctx.fillStyle = 'white';
       ctx.font = `${12 / scale}px Inter`;
-      ctx.fillText(
-        labelClass?.name || 'Unknown',
-        ann.x + 4 / scale,
-        ann.y - 6 / scale
-      );
+      ctx.fillText(labelClass?.name || 'Unknown', ann.x + 4 / scale, ann.y - 6 / scale);
     });
 
     // Draw current drawing box
@@ -247,7 +259,18 @@ export default function AnnotatePage() {
     }
 
     ctx.restore();
-  }, [loadedImage, annotations, drawingBox, scale, offset, selectedAnnotationId, labelClasses, selectedLabelClassId, isResizing]);
+  }, [
+    loadedImage,
+    isImageFitted,
+    annotations,
+    drawingBox,
+    scale,
+    offset,
+    selectedAnnotationId,
+    labelClasses,
+    selectedLabelClassId,
+    isResizing,
+  ]);
 
   // Convert screen coordinates to image coordinates
   const screenToImage = (screenX: number, screenY: number) => {
@@ -260,7 +283,10 @@ export default function AnnotatePage() {
   };
 
   // Get resize handle at position for a given annotation
-  const getResizeHandleAtPosition = (pos: { x: number; y: number }, ann: Annotation): ResizeHandle => {
+  const getResizeHandleAtPosition = (
+    pos: { x: number; y: number },
+    ann: Annotation
+  ): ResizeHandle => {
     const handleSize = HANDLE_SIZE / scale;
     const halfHandle = handleSize / 2;
 
@@ -592,7 +618,7 @@ export default function AnnotatePage() {
   // Create new label class
   const handleCreateLabelClass = async () => {
     const trimmedName = newLabelName.trim();
-    
+
     // Validation
     if (!trimmedName) {
       setLabelError('Label name is required');
@@ -691,21 +717,19 @@ export default function AnnotatePage() {
             </Link>
             <span className="text-sm text-neutral-500 ml-4">{currentImage?.fileName}</span>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-neutral-500">
-              {annotations.length} annotations
-            </span>
-          </div>
+          <span className="text-sm text-neutral-500">{annotations.length} annotations</span>
         </div>
 
         {/* Canvas */}
-        <div
-          ref={containerRef}
-          className="flex-1 bg-neutral-100 overflow-hidden relative"
-        >
+        <div ref={containerRef} className="flex-1 bg-neutral-100 overflow-hidden relative">
           <canvas
             ref={canvasRef}
-            style={{ cursor: isResizing ? getCursorForHandle(resizeHandle) : getCursorForHandle(hoveredHandle) }}
+            className="block w-full h-full"
+            style={{
+              cursor: isResizing
+                ? getCursorForHandle(resizeHandle)
+                : getCursorForHandle(hoveredHandle),
+            }}
             onMouseDown={handleMouseDown}
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}
@@ -760,9 +784,7 @@ export default function AnnotatePage() {
                     autoFocus
                     maxLength={80}
                   />
-                  {labelError && (
-                    <p className="text-xs text-red-600 mt-1">{labelError}</p>
-                  )}
+                  {labelError && <p className="text-xs text-red-600 mt-1">{labelError}</p>}
                 </div>
 
                 {/* Color Picker */}
@@ -803,11 +825,7 @@ export default function AnnotatePage() {
                     onClick={handleCreateLabelClass}
                     disabled={isCreatingLabel || !newLabelName.trim()}
                   >
-                    {isCreatingLabel ? (
-                      <Loader2 className="h-3 w-3 animate-spin" />
-                    ) : (
-                      'Add'
-                    )}
+                    {isCreatingLabel ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Add'}
                   </Button>
                 </div>
               </div>
@@ -819,12 +837,7 @@ export default function AnnotatePage() {
             {labelClasses.length === 0 && !showAddLabel ? (
               <div className="text-center py-4">
                 <p className="text-sm text-neutral-500 mb-2">No label classes yet</p>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleShowAddLabel}
-                  className="gap-1"
-                >
+                <Button variant="outline" size="sm" onClick={handleShowAddLabel} className="gap-1">
                   <Plus className="h-3 w-3" />
                   Add Label Class
                 </Button>
@@ -840,10 +853,7 @@ export default function AnnotatePage() {
                       : 'hover:bg-neutral-100'
                   }`}
                 >
-                  <div
-                    className="h-4 w-4 rounded"
-                    style={{ backgroundColor: cls.colorHex }}
-                  />
+                  <div className="h-4 w-4 rounded" style={{ backgroundColor: cls.colorHex }} />
                   {cls.name}
                 </button>
               ))
@@ -864,9 +874,7 @@ export default function AnnotatePage() {
                 <span className="text-neutral-500">Source:</span>{' '}
                 <span
                   className={
-                    selectedAnnotation.source === 'auto'
-                      ? 'text-primary-600'
-                      : 'text-neutral-900'
+                    selectedAnnotation.source === 'auto' ? 'text-primary-600' : 'text-neutral-900'
                   }
                 >
                   {selectedAnnotation.source}
@@ -879,8 +887,8 @@ export default function AnnotatePage() {
                     selectedAnnotation.status === 'approved'
                       ? 'text-success'
                       : selectedAnnotation.status === 'rejected'
-                      ? 'text-error'
-                      : 'text-warning'
+                        ? 'text-error'
+                        : 'text-warning'
                   }
                 >
                   {selectedAnnotation.status}
@@ -912,12 +920,7 @@ export default function AnnotatePage() {
                   Reject
                 </Button>
               </div>
-              <Button
-                size="sm"
-                variant="destructive"
-                className="w-full"
-                onClick={handleDelete}
-              >
+              <Button size="sm" variant="destructive" className="w-full" onClick={handleDelete}>
                 <Trash2 className="h-4 w-4 mr-1" />
                 Delete
               </Button>
@@ -956,8 +959,8 @@ export default function AnnotatePage() {
                         ann.status === 'approved'
                           ? 'text-success'
                           : ann.status === 'rejected'
-                          ? 'text-error'
-                          : 'text-warning'
+                            ? 'text-error'
+                            : 'text-warning'
                       }`}
                     >
                       {ann.status}
